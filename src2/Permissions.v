@@ -7,6 +7,32 @@ From Coq Require Import
      Relations.Operators_Properties.
 (* end hide *)
 
+
+(*** Helper lemmas for clos_trans ***)
+
+Global Instance Reflexive_clos_trans {A} R `{Reflexive A R} : Reflexive (clos_trans A R).
+Proof.
+  intro. left. reflexivity.
+Qed.
+
+Global Instance Transitive_clos_trans {A} R : Transitive (clos_trans A R).
+Proof.
+  repeat intro. eapply t_trans; eassumption.
+Qed.
+
+Global Instance PreOrder_clos_trans {A} R `{Reflexive A R} : PreOrder (clos_trans A R).
+Proof.
+  constructor; typeclasses eauto.
+Qed.
+
+Lemma clos_trans_trans {A} R `{Transitive A R} x y :
+  clos_trans A R x y <-> R x y.
+Proof.
+  split; intro.
+  - induction H0; eauto.
+  - left; assumption.
+Qed.
+
 (* Helper lemma: clos_trans preserves anything preserved by a single step *)
 Lemma clos_trans_preserves {A} (pred:A -> Prop) (R : A -> A -> Prop) :
   (forall x y, pred x -> R x y -> pred y) ->
@@ -17,14 +43,6 @@ Proof.
   - apply IHclos_trans2; apply IHclos_trans1; assumption.
 Qed.
 
-Lemma clos_trans_clos_trans {A} (R : A -> A -> Prop) x y :
-  clos_trans A (fun x y => clos_trans A R x y) x y -> clos_trans A R x y.
-Proof.
-  intro H; induction H.
-  - assumption.
-  - eapply t_trans; eassumption.
-Qed.
-
 Lemma clos_trans_incl {A} (R S : A -> A -> Prop)
   (incl : forall x y, R x y -> S x y) x y :
   clos_trans A R x y -> clos_trans A S x y.
@@ -32,6 +50,49 @@ Proof.
   intro H; induction H.
   - left; apply incl; assumption.
   - eapply t_trans; eassumption.
+Qed.
+
+Lemma clos_trans_or_l {A} R S x y : clos_trans A R x y ->
+                                    clos_trans A (fun x' y' => R x' y' \/ S x' y') x y.
+Proof.
+  apply clos_trans_incl. intros. left; assumption.
+Qed.
+
+Lemma clos_trans_or_r {A} R S x y : clos_trans A S x y ->
+                                    clos_trans A (fun x' y' => R x' y' \/ S x' y') x y.
+Proof.
+  apply clos_trans_incl. intros. right; assumption.
+Qed.
+
+Lemma clos_trans_or_assoc {A} R S T x y :
+  clos_trans A (fun x' y' => R x' y' \/ (S x' y' \/ T x' y')) x y <->
+    clos_trans A (fun x' y' => (R x' y' \/ S x' y') \/ T x' y') x y.
+Proof.
+  split; apply clos_trans_incl; intros; repeat destruct H; auto.
+Qed.
+
+Lemma clos_trans_clos_trans_or {A} R S x y :
+  clos_trans A (fun x' y' => clos_trans A R x' y' \/ S x' y') x y <->
+    clos_trans A (fun x' y' => R x' y' \/ S x' y') x y.
+Proof.
+  split; intro H.
+  - induction H; [ destruct H | ].
+    + apply clos_trans_or_l; assumption.
+    + left; right; assumption.
+    + etransitivity; eassumption.
+  - induction H; [ destruct H | ].
+    + left; left; left; assumption.
+    + left; right; assumption.
+    + etransitivity; eassumption.
+Qed.
+
+Lemma clos_trans_eq_or {A} R `{Reflexive A R} x y :
+  clos_trans A (fun x' y' => x' = y' \/ R x' y') x y <->
+  clos_trans A R x y.
+Proof.
+  split; apply clos_trans_incl; intros.
+  - destruct H0; [ subst; reflexivity | assumption ].
+  - right; assumption.
 Qed.
 
 
@@ -825,6 +886,15 @@ Section Permissions.
   (*   intros. red in H. split; auto. *)
   (* Qed. *)
 
+  (* If p preserves pred then p _|_ invperm pred *)
+  Lemma separate_invperm p (pred : config -> Prop) :
+    (forall x y, pred x -> guar p x y -> pred y) ->
+    separate p (invperm pred).
+  Proof.
+    intro. constructor; simpl; intros.
+    - subst; reflexivity.
+    - eapply H; eassumption.
+  Qed.
 
 
   (** ** Separating conjunction for permissions *)
@@ -859,7 +929,7 @@ Section Permissions.
   Next Obligation.
     assert (inv p y /\ inv q y) as H3;
       [ | destruct H3; split; [ | split ]; assumption ].
-    unshelve (eapply (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H));
+    refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H);
       [ | split; assumption ].
     simpl. intros. destruct H3; destruct H4; split;
       try (eapply inv_guar; eassumption).
@@ -911,6 +981,22 @@ Section Permissions.
     apply lte_l_sep_conj_perm.
   Qed.
 
+  Lemma sep_conj_self_invperm' p : p ** invperm (inv p) <= p.
+  Proof.
+    constructor; intros; simpl.
+    - split; auto.
+    - split; intros; auto. eapply inv_rely; eassumption.
+    - simpl in H0. apply clos_trans_trans; [ typeclasses eauto | ].
+      eapply clos_trans_incl; [ | eassumption ]. intros.
+      destruct H1; [ assumption | subst; reflexivity ].
+    - split; [ | split ]; try assumption.
+      apply separate_invperm; intros. eapply inv_guar; eauto.
+  Qed.
+
+  Lemma sep_conj_self_invperm p : eq_perm (p ** invperm (inv p)) p.
+  Proof.
+    split; [ apply sep_conj_self_invperm' | apply lte_l_sep_conj_perm ].
+  Qed.
   
   (** We can always weaken permissions and retain separateness, as long as we
       add the stronger invariant to the weaker permission *)
@@ -919,19 +1005,10 @@ Section Permissions.
                                       p ⊥ (invperm (inv q) ** r).
   Proof.
     intros. constructor; intros.
-    - destruct H1 as [ ? [ ? ? ]]. simpl in H3. induction H3.
-      + destruct H3; [ subst; reflexivity | ].
-        apply H; auto. apply H0; auto.
-      + assert (inv p y /\ inv q y).
-        * refine (clos_trans_preserves
-                    (fun z => inv p z /\ inv q z) _ _ _ _ _ H3_); auto; intros.
-          destruct H3. destruct H6; [ subst; split; assumption | ].
-          split.
-          -- eapply inv_rely; eauto. eapply sep_l; eauto.
-          -- eapply inv_guar; eauto.
-        * destruct H3.
-          transitivity y; [ apply IHclos_trans1 | apply IHclos_trans2 ]; auto.
-          apply H0; assumption.
+    - destruct H1 as [ ? [ ? ? ]]. simpl in H3.
+      rewrite clos_trans_eq_or in H3; [ | typeclasses eauto ].
+      rewrite clos_trans_trans in H3; [ | typeclasses eauto ].
+      eapply sep_l; eauto.
     - split.
       + intro. eapply inv_rely; eauto. eapply sep_r; eauto.
       + simpl in H2; destruct H2 as [ ? [ ? ? ]]. apply H0; auto.
@@ -941,8 +1018,17 @@ Section Permissions.
   Global Instance Proper_eq_perm_separate :
     Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) separate.
   Proof.
-    repeat intro.
-  Admitted.
+    intros p p' p_eq q q' q_eq p_sep_q. destruct p_eq; destruct q_eq.
+    split; intros.
+    - apply H; [ apply H0 | ]; eauto. eapply sep_l; eauto.
+      + apply H2; eassumption.
+      + apply H0; eassumption.
+      + apply H1; [ | assumption ]. apply H2; assumption.
+    - apply H1; [ apply H2 | ]; eauto. eapply sep_r; eauto.
+      + apply H0; assumption.
+      + apply H2; assumption.
+      + apply H; [ | assumption ]. apply H0; assumption.
+  Qed.
 
 
   Lemma sep_conj_perm_monotone : forall p p' q q',
@@ -951,47 +1037,30 @@ Section Permissions.
     constructor; intros; simpl.
     - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto.
     - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto; intros.
-      * eapply inv_rely; eauto.
-      * eapply inv_rely; eauto.
-    - destruct H1 as [? [? ?]]. simpl in H2. induction H2; [ destruct H2 | ].
-      + induction H2; [ destruct H2 | ].
-        * assert (x = y); [ | subst; left; left; reflexivity ].
-          induction H2; [ destruct H2; subst; reflexivity | ].
-          assert (x = y); [ apply IHclos_trans1; assumption | ].
-          subst. apply IHclos_trans2; assumption.
-        * left; left. apply H; eauto.
-        * eapply t_trans; [ apply IHclos_trans1; assumption | ].
-          assert (inv p y /\ inv q y) as H5;
-            [ | destruct H5; apply IHclos_trans2; assumption ].
-          refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H2_);
-            [ | split; assumption ].
-          intros.
-          destruct H5.
-          -- refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H5);
-               [ | assumption ].
-             intros. destruct H7; subst; assumption.
-          -- destruct H2; split.
-             ++ eapply inv_guar; eauto.
-             ++ eapply inv_rely; eauto. eapply sep_r; eauto.
-      + left. right. apply H0; eauto.
-      + eapply t_trans; [ apply IHclos_trans1; assumption | ].
+      + eapply inv_rely; eauto.
+      + eapply inv_rely; eauto.
+    - destruct H1 as [? [? ?]]. simpl in H2.
+      rewrite clos_trans_clos_trans_or in H2.
+      rewrite <- clos_trans_or_assoc in H2.
+      rewrite clos_trans_clos_trans_or in H2.
+      rewrite <- clos_trans_or_assoc in H2.
+      rewrite clos_trans_eq_or in H2; [ | repeat left; reflexivity ].
+      rewrite clos_trans_eq_or in H2; [ | repeat left; reflexivity ].
+      induction H2; [ destruct H2 | ].
+      + apply t_step; left; apply H; eauto.
+      + apply t_step; right; apply H0; eauto.
+      + etransitivity; eauto.
         assert (inv p y /\ inv q y) as H5;
           [ | destruct H5; apply IHclos_trans2; assumption ].
         refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H2_);
-            [ | split; assumption ].
-        intros.
-        destruct H5.
-        * refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H5);
-            [ | assumption ].
-          intros. destruct H7.
-          -- assert (x1 = y1); [ | subst; assumption ]. clear H6.
-             induction H7; [ destruct H6 | ]; subst; reflexivity.
-          -- destruct H6; split.
-             ++ eapply (inv_guar _ x1 y1); eauto.
-             ++ eapply (inv_rely _ x1 y1); eauto. eapply sep_r; eauto.
-        * destruct H2; split.
-          -- eapply (inv_rely _ x0 y0); eauto. eapply sep_l; eauto.
-          -- eapply (inv_guar _ x0 y0); eauto.
+          [ | split; assumption ].
+        intros. destruct H2. destruct H5.
+        * split.
+          -- eapply inv_guar; eauto.
+          -- eapply inv_rely; eauto. eapply sep_r; eauto.
+        * split.
+          -- eapply inv_rely; eauto. eapply sep_l; eauto.
+          -- eapply inv_guar; eauto.
     - destruct H1 as [? [? ?]].
       repeat split; simpl; intros; subst; eauto.
       + apply H; assumption.
@@ -1009,12 +1078,12 @@ Section Permissions.
       + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
         apply H; auto. eapply sep_l; eauto.
       + destruct H4 as [[? [? ?]] [? ?]].
-        assert (guar p' x0 y).
-        * clear H4 H5 H7 H9. induction H6; [ | etransitivity; eassumption ].
-          destruct H4; [ | assumption ].
-          induction H4; [ | etransitivity; eassumption ].
-          destruct H4; subst; reflexivity.
-        * apply H0; eauto. eapply sep_r; eauto.
+        rewrite clos_trans_clos_trans_or in H6.
+        rewrite <- clos_trans_or_assoc in H6.
+        rewrite clos_trans_eq_or in H6; [ | intro; left; reflexivity ].
+        rewrite clos_trans_eq_or in H6; [ | typeclasses eauto ].
+        rewrite clos_trans_trans in H6; [ | typeclasses eauto ].
+        apply H0; eauto. eapply sep_r; eauto.
   Qed.
 
   (* NOTE: should still be provable, using the above plus p ** invperm (inv p) = p *)
@@ -1029,13 +1098,9 @@ Section Permissions.
     constructor; intros.
     - split; [| split]; simpl; intuition.
     - repeat split; auto.
-    - induction H0.
-      + destruct H0; auto. inversion H0. reflexivity.
-      + etransitivity; eauto. apply IHclos_trans2.
-        refine (clos_trans_preserves (inv p) _ _ _ _ _ H0_); [ | assumption ].
-        intros. destruct H1.
-        * eapply inv_guar; eauto.
-        * simpl in H1. subst. assumption.
+    - simpl in H0. eapply clos_trans_trans; [ typeclasses eauto | ].
+      eapply clos_trans_incl; [ | eassumption ]. intros.
+      destruct H1; [ assumption | subst; reflexivity ].
     - split; [ assumption | split ].
       * constructor.
       * apply separate_bottom.
@@ -1074,6 +1139,7 @@ Section Permissions.
     intros. apply separate_sep_conj_perm_l.
     rewrite sep_conj_perm_commut in H. assumption.
   Qed.
+
 
 FIXME: this is where I'm stopping for now
 
