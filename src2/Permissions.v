@@ -64,6 +64,13 @@ Proof.
   apply clos_trans_incl. intros. right; assumption.
 Qed.
 
+Lemma clos_trans_or_commut {A} R S x y :
+  clos_trans A (fun x' y' => R x' y' \/ S x' y') x y <->
+    clos_trans A (fun x' y' => S x' y' \/ R x' y') x y.
+Proof.
+  split; apply clos_trans_incl; intros; repeat destruct H; auto.
+Qed.
+
 Lemma clos_trans_or_assoc {A} R S T x y :
   clos_trans A (fun x' y' => R x' y' \/ (S x' y' \/ T x' y')) x y <->
     clos_trans A (fun x' y' => (R x' y' \/ S x' y') \/ T x' y') x y.
@@ -490,6 +497,13 @@ Section Permissions.
     |}.
   Next Obligation.
     constructor; repeat intro; subst; auto.
+  Qed.
+
+  (* A stronger predicate gives a stronger invperm *)
+  Lemma lte_invperm (pred1 pred2 : config -> Prop) :
+    (forall x, pred1 x -> pred2 x) -> invperm pred2 <= invperm pred1.
+  Proof.
+    constructor; simpl; intros; auto.
   Qed.
 
 
@@ -981,6 +995,23 @@ Section Permissions.
     apply lte_l_sep_conj_perm.
   Qed.
 
+  Lemma sep_conj_invperm_conj pred1 pred2 :
+    eq_perm (invperm pred1 ** invperm pred2) (invperm (fun x => pred1 x /\ pred2 x)).
+  Proof.
+    constructor; constructor; simpl; intros.
+    - split; constructor.
+    - destruct (H0 H). split; intro; assumption.
+    - rewrite clos_trans_eq_or in H0; [ | typeclasses eauto ].
+      apply clos_trans_trans; [ typeclasses eauto | assumption ].
+    - destruct H; split; [ | split ]; try assumption.
+      apply separate_invperm; intros. inversion H2. subst; assumption.
+    - constructor.
+    - destruct H1. destruct H0. split; auto.
+    - subst; apply t_step; left; reflexivity.
+    - destruct H as [? [? ?]]. split; assumption.
+  Qed.
+
+
   Lemma sep_conj_self_invperm' p : p ** invperm (inv p) <= p.
   Proof.
     constructor; intros; simpl.
@@ -1030,6 +1061,51 @@ Section Permissions.
       + apply H; [ | assumption ]. apply H0; assumption.
   Qed.
 
+  Lemma sep_conj_perm_monotone_l p p' q :
+      p' <= p -> invperm (inv p) ** p' ** q <= p ** q.
+  Proof.
+    constructor; simpl; intros.
+    - destruct H0 as [? [? ?]]. destruct H1. repeat split; eauto.
+    - destruct H0 as [? [? ?]]. destruct H1. repeat split; eauto; intros.
+      eapply inv_rely; eauto.
+    - destruct H0 as [? [? ?]]. simpl in H1.
+      rewrite clos_trans_clos_trans_or in H1.
+      rewrite <- clos_trans_or_assoc in H1.
+      rewrite clos_trans_eq_or in H1; [ | repeat left; reflexivity ].
+      induction H1; [ destruct H1 | ].
+      + apply t_step; left; apply H; eauto.
+      + apply t_step; right; assumption.
+      + etransitivity; eauto.
+        assert (inv p y /\ inv q y) as H4;
+          [ | destruct H4; apply IHclos_trans2; assumption ].
+        refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H1_);
+          [ | split; assumption ].
+        intros. destruct H1; destruct H4; split.
+        * eapply inv_guar; eauto.
+        * eapply inv_rely; eauto. eapply sep_r; eauto.
+        * eapply inv_rely; eauto. eapply sep_l; eauto.
+        * eapply inv_guar; eauto.
+    - destruct H0 as [? [? ?]].
+      repeat split; simpl; intros; subst; eauto.
+      + apply H; assumption.
+      + eapply inv_guar; eauto.
+      + reflexivity.
+      + simpl in H4; destruct H4 as [? [? ?]].
+        eapply inv_rely; eauto. eapply sep_l; eauto.
+      + simpl in H4; destruct H4 as [? [? ?]].
+        apply H; eauto. eapply sep_l; eauto.
+      + rewrite clos_trans_eq_or in H5; [ | typeclasses eauto ].
+        rewrite clos_trans_trans in H5; [ | typeclasses eauto ].
+        destruct H3 as [? [? ?]].
+        eapply sep_r; eauto.
+  Qed.
+
+  (* FIXME: the "easy" proof requires associativity of **
+  Lemma sep_conj_perm_monotone_r p q q' :
+    q' <= q -> p ** invperm (inv q) ** q' <= p ** q.
+  Proof.
+    intros. rewrite (sep_conj_perm_commut _ q'). rewrite (sep_conj_perm_commut _ q).
+    apply sep_conj_perm_monotone_l.
 
   Lemma sep_conj_perm_monotone : forall p p' q q',
       p' <= p -> q' <= q -> invperm (inv p) ** invperm (inv q) ** p' ** q' <= p ** q.
@@ -1085,6 +1161,7 @@ Section Permissions.
         rewrite clos_trans_trans in H6; [ | typeclasses eauto ].
         apply H0; eauto. eapply sep_r; eauto.
   Qed.
+  *)
 
   (* NOTE: should still be provable, using the above plus p ** invperm (inv p) = p *)
   Global Instance Proper_eq_perm_sep_conj_perm :
@@ -1155,6 +1232,24 @@ FIXME: this is where I'm stopping for now
       + etransitivity; eauto.
     - split; [apply H | apply H0]; auto.
   Qed.
+
+  Lemma sep_conj_perm_assoc p q r : eq_perm (p ** (q ** r)) ((p ** q) ** r).
+  Proof.
+    split; constructor; simpl; intros.
+    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
+    - destruct H0 as [[? ?] ?]. repeat split; assumption.
+    - rewrite clos_trans_clos_trans_or.
+      rewrite clos_trans_or_commut in H0.
+      rewrite clos_trans_clos_trans_or in H0.
+      rewrite clos_trans_or_commut in H0.
+      rewrite clos_trans_or_assoc in H0. assumption.
+    - 
+
+FIXME
+      rewrite <- clos_trans_clos_trans_or in H0.
+rewrite <- clos_trans_or_assoc.
+
+
 
   Lemma sep_conj_perm_assoc : forall p q r,
       (p ** q) ** r ≡≡ p ** (q ** r).
