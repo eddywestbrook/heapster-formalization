@@ -7,6 +7,34 @@ From Coq Require Import
      Relations.Operators_Properties.
 (* end hide *)
 
+(* Helper lemma: clos_trans preserves anything preserved by a single step *)
+Lemma clos_trans_preserves {A} (pred:A -> Prop) (R : A -> A -> Prop) :
+  (forall x y, pred x -> R x y -> pred y) ->
+  forall x y, pred x -> clos_trans _ R x y -> pred y.
+Proof.
+  intros. revert H0; induction H1; intros.
+  - eapply H; eassumption.
+  - apply IHclos_trans2; apply IHclos_trans1; assumption.
+Qed.
+
+Lemma clos_trans_clos_trans {A} (R : A -> A -> Prop) x y :
+  clos_trans A (fun x y => clos_trans A R x y) x y -> clos_trans A R x y.
+Proof.
+  intro H; induction H.
+  - assumption.
+  - eapply t_trans; eassumption.
+Qed.
+
+Lemma clos_trans_incl {A} (R S : A -> A -> Prop)
+  (incl : forall x y, R x y -> S x y) x y :
+  clos_trans A R x y -> clos_trans A S x y.
+Proof.
+  intro H; induction H.
+  - left; apply incl; assumption.
+  - eapply t_trans; eassumption.
+Qed.
+
+
 Section Permissions.
   (** This entire file is parameterized over some state type. *)
   Context {config : Type}.
@@ -76,6 +104,19 @@ Section Permissions.
 
 
   (** ** Permission ordering *)
+  (* Bigger permission has a smaller invariant precondition, and rely, and a
+     bigger guarantee, where the last three comparisons are relativized to the
+     smaller invariant *)
+  Record lte_perm (p q: perm) : Prop :=
+    {
+      pre_inc : forall x, inv q x -> pre q x -> pre p x;
+      rely_inc : forall x y, inv q x -> rely q x y -> rely p x y;
+      guar_inc : forall x y, inv q x -> guar p x y -> guar q x y;
+      inv_inc : forall x, inv q x -> inv p x;
+    }.
+
+
+  (*
   (* Bigger permission has smaller pre and rely. Bigger inv and guar *)
   Record lte_perm (p q: perm) : Prop :=
     {
@@ -113,6 +154,7 @@ Section Permissions.
       guar_inc'' : guar p = guar q;
       inv_inc'' : forall x, inv p x -> inv q x;
     }.
+   *)
 
   (* Lemma lte_restrict p q (sp1 sp2 : config -> Prop) : *)
   (*   (forall x, sp1 x -> sp2 x) -> *)
@@ -148,8 +190,8 @@ Section Permissions.
     constructor; [ constructor; auto | constructor; intros ]; eauto.
     - apply H; auto; apply H0; auto; apply H; auto.
     - apply H; auto; apply H0; auto; apply H; auto.
-    - apply H0; apply H; auto; apply H0; auto.
-    - apply H0; apply H; auto; apply H0; auto.
+    - apply H0; auto. apply H; auto; apply H0; auto.
+    - apply H; apply H0; assumption.
   Qed.
 
   (*
@@ -220,7 +262,7 @@ Section Permissions.
    *)
 
   Global Instance Proper_lte_perm_inv :
-    Proper (lte_perm ==> eq ==> Basics.impl) inv.
+    Proper (lte_perm ==> eq ==> Basics.flip Basics.impl) inv.
   Proof.
     repeat intro. subst. apply H; auto.
   Qed.
@@ -292,9 +334,8 @@ Section Permissions.
          (pre p x <-> pre q x).
   Proof.
     split; intros.
+    - apply H; auto. rewrite eq_perm_inv in H0; eauto.
     - apply H; auto.
-    - apply H; auto.
-      rewrite eq_perm_inv in H0; eauto.
   Qed.
 
   (* Global Instance Proper_eq_perm_lte_perm' : *)
@@ -342,13 +383,14 @@ Section Permissions.
     etransitivity; eauto.
   Qed.
 
+
   (** Other lattice definitions. *)
   Program Definition bottom_perm : perm :=
     {|
       pre := fun x => True;
       rely := fun x y => True;
       guar := fun x y => x = y;
-      inv := fun x => False;
+      inv := fun x => True;
     |}.
   Next Obligation.
     constructor; repeat intro; subst; auto.
@@ -364,7 +406,7 @@ Section Permissions.
       pre := fun x => False;
       rely := fun x y => x = y;
       guar := fun x y => True;
-      inv := fun x => True;
+      inv := fun x => False;
     |}.
   Next Obligation.
     constructor; repeat intro; subst; auto.
@@ -376,6 +418,19 @@ Section Permissions.
   Qed.
 
   Ltac respects := eapply pre_respects; eauto.
+
+  (* The permission with only an invariant, that is otherwise bottom *)
+  Program Definition invperm phi : perm :=
+    {|
+      pre := fun x => True;
+      rely := fun x y => phi x -> phi y;
+      guar := fun x y => x = y;
+      inv := phi;
+    |}.
+  Next Obligation.
+    constructor; repeat intro; subst; auto.
+  Qed.
+
 
   (*
   Program Definition join_perm' (ps: perm -> Prop) (H: exists p, ps p) : perm :=
@@ -747,7 +802,7 @@ Section Permissions.
     {
       sep_l: forall x y, inv q x -> inv p x -> (* inv p y -> *)
                     guar q x y -> rely p x y;
-    sep_r: forall x y, inv p x -> inv q x -> guar p x y -> rely q x y;
+      sep_r: forall x y, inv p x -> inv q x -> guar p x y -> rely q x y;
     }.
 
   Notation "p ⊥ q" := (separate p q) (at level 50).
@@ -757,11 +812,11 @@ Section Permissions.
     intros p q []. constructor; auto.
   Qed.
 
-  (* Lemma separate_bottom : forall p, p ⊥ bottom_perm. *)
-  (* Proof. *)
-  (*   constructor; intros; cbn; auto. *)
-  (*   inversion H. *)
-  (* Qed. *)
+  Lemma separate_bottom : forall p, p ⊥ bottom_perm.
+  Proof.
+    constructor; intros; cbn; auto.
+    inversion H1. reflexivity.
+  Qed.
 
   (* Definition copyable p := forall x y, guar p x y -> rely p x y. *)
 
@@ -770,57 +825,7 @@ Section Permissions.
   (*   intros. red in H. split; auto. *)
   (* Qed. *)
 
-  (** We can always weaken permissions and retain separateness. *)
 
-  Lemma separate_antimonotone'' : forall p q r, p ⊥ q -> lte_perm' r q -> p ⊥ r.
-  Proof.
-    intros. constructor.
-    - intros. apply H; auto. destruct H0; auto.
-      rewrite <- inv_inc'0. auto.
-      apply H0; auto.
-    - intros.
-      (* assert (inv p y). { eapply inv_guar; eauto. } *)
-      apply H in H3; auto. (* 2: { apply H0. auto. } *)
-      apply H0; auto. admit. admit.
-      (* destruct H0. rewrite inv_inc'0. in H2. apply H; auto. *)
-  Abort.
-
-  Lemma separate_antimonotone : forall p q r, p ⊥ q -> lte_perm'' r q -> p ⊥ r.
-  Proof.
-    intros. constructor.
-    - intros. destruct H0. apply H; auto.
-      rewrite <- guar_inc''0. auto.
-    - intros.
-      apply H in H3; auto. admit. destruct H0. rewrite rely_inc''0. apply H; auto.
-  Qed.
-
-  Lemma separate_antimonotone'' : forall p q r, p ⊥ q -> r <= q -> p ⊥ r.
-  Proof.
-    intros. constructor.
-    - intros. apply H; auto. apply H0; auto. apply H0; auto.
-    - intros.
-      assert (inv q x). { apply H0. auto. }
-      assert (inv p y) by (eapply inv_guar; eauto).
-      apply H in H3; auto.
-      assert (inv q y) by (eapply inv_rely; eauto).
-apply H0; auto.
-      assert (inv q y). apply H0. apply H in H3; auto.
-      eapply inv_rely; eauto. apply H0; auto.
-
-      apply H0; auto.
-      + admit.
-      (* assert (inv p y). { eapply inv_guar; eauto. } *)
-      apply H in H2; auto. (* 2: { apply H0. auto. } *)
-      apply H0; auto. destruct H0.  apply inv_inc0 in H2. apply H; auto.
-  Qed.
-
-  Global Instance Proper_eq_perm_separate :
-    Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) separate.
-  Proof.
-    repeat intro.
-    eapply separate_antimonotone; eauto. symmetry.
-    eapply separate_antimonotone; eauto. symmetry. auto.
-  Qed.
 
   (** ** Separating conjunction for permissions *)
   Program Definition sep_conj_perm (p q: perm) : perm :=
@@ -846,62 +851,194 @@ apply H0; auto.
       + repeat (econstructor 2; eauto).
   Qed.
   Next Obligation.
-    split; [respects | split; [respects | auto]].
+    split; respects.
   Qed.
+  Next Obligation.
+    split; [ | split ]; try assumption; eapply inv_rely; eassumption.
+  Qed.
+  Next Obligation.
+    assert (inv p y /\ inv q y) as H3;
+      [ | destruct H3; split; [ | split ]; assumption ].
+    unshelve (eapply (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H));
+      [ | split; assumption ].
+    simpl. intros. destruct H3; destruct H4; split;
+      try (eapply inv_guar; eassumption).
+    - eapply inv_rely; [ | eassumption ]. eapply (sep_r _ _ H2); assumption.
+    - eapply inv_rely; [ | eassumption ]. eapply (sep_l _ _ H2); assumption.
+  Qed.
+
   Notation "p ** q" := (sep_conj_perm p q) (at level 40).
 
+
+  (*
   Lemma sep_conj_join : forall p q, p ⊥ q -> p ** q ≡≡ join_perm p q.
   Proof.
     split; intros.
     - constructor; auto; intros x []; split; auto.
     - constructor; auto; intros x [? [? ?]]; split; auto.
   Qed.
+   *)
+
+  Lemma sep_conj_perm_commut' : forall p q, p ** q <= q ** p.
+  Proof.
+    constructor.
+    - intros x [? [? ?]]; simpl; split; intuition.
+      (*
+    - intros x y []; repeat split; auto.
+    - intros. induction H.
+      + destruct H; constructor; auto.
+      + etransitivity; eauto.
+  Qed. *)
+  Admitted.
+
+  Lemma sep_conj_perm_commut : forall p q, p ** q ≡≡ q ** p.
+  Proof.
+    split; apply sep_conj_perm_commut'.
+  Qed.
 
   Lemma lte_l_sep_conj_perm : forall p q, p <= p ** q.
   Proof.
     intros. constructor; simpl; auto.
-    - intros x []; auto.
-    - intros x y []; auto.
-    - constructor; auto.
+    - intros x _ []; auto.
+    - intros x y [ inv_p [ inv_q sep ]] [ rel_p rel_q ]. assumption.
+    - intros x y [ inv_p [ inv_q sep ]] ?. left; left; assumption.
+    - intros x [ ? ? ]; assumption.
   Qed.
 
   Lemma lte_r_sep_conj_perm : forall p q, q <= p ** q.
   Proof.
-    intros. constructor; simpl; auto.
-    - intros x [? [? ?]]; auto.
-    - intros x y []; auto.
-    - constructor; auto.
+    intros. rewrite sep_conj_perm_commut.
+    apply lte_l_sep_conj_perm.
   Qed.
+
+  
+  (** We can always weaken permissions and retain separateness, as long as we
+      add the stronger invariant to the weaker permission *)
+
+  Lemma separate_antimonotone p q r : p ⊥ q -> r <= q ->
+                                      p ⊥ (invperm (inv q) ** r).
+  Proof.
+    intros. constructor; intros.
+    - destruct H1 as [ ? [ ? ? ]]. simpl in H3. induction H3.
+      + destruct H3; [ subst; reflexivity | ].
+        apply H; auto. apply H0; auto.
+      + assert (inv p y /\ inv q y).
+        * refine (clos_trans_preserves
+                    (fun z => inv p z /\ inv q z) _ _ _ _ _ H3_); auto; intros.
+          destruct H3. destruct H6; [ subst; split; assumption | ].
+          split.
+          -- eapply inv_rely; eauto. eapply sep_l; eauto.
+          -- eapply inv_guar; eauto.
+        * destruct H3.
+          transitivity y; [ apply IHclos_trans1 | apply IHclos_trans2 ]; auto.
+          apply H0; assumption.
+    - split.
+      + intro. eapply inv_rely; eauto. eapply sep_r; eauto.
+      + simpl in H2; destruct H2 as [ ? [ ? ? ]]. apply H0; auto.
+        eapply sep_r; eauto.
+  Qed.
+
+  Global Instance Proper_eq_perm_separate :
+    Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) separate.
+  Proof.
+    repeat intro.
+  Admitted.
+
 
   Lemma sep_conj_perm_monotone : forall p p' q q',
-      p' <= p -> q' <= q -> p' ** q' <= p ** q.
+      p' <= p -> q' <= q -> invperm (inv p) ** invperm (inv q) ** p' ** q' <= p ** q.
   Proof.
     constructor; intros; simpl.
-    - destruct H1 as [? [? ?]]; split; [| split]; eauto.
-      eapply separate_antimonotone; eauto.
-      symmetry. symmetry in H3. eapply separate_antimonotone; eauto.
-    - split.
-      + apply H. apply H1.
-      + apply H0. apply H1.
-    - induction H1.
-      + constructor. destruct H1; eauto.
-      + econstructor 2; eauto.
+    - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto.
+    - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto; intros.
+      * eapply inv_rely; eauto.
+      * eapply inv_rely; eauto.
+    - destruct H1 as [? [? ?]]. simpl in H2. induction H2; [ destruct H2 | ].
+      + induction H2; [ destruct H2 | ].
+        * assert (x = y); [ | subst; left; left; reflexivity ].
+          induction H2; [ destruct H2; subst; reflexivity | ].
+          assert (x = y); [ apply IHclos_trans1; assumption | ].
+          subst. apply IHclos_trans2; assumption.
+        * left; left. apply H; eauto.
+        * eapply t_trans; [ apply IHclos_trans1; assumption | ].
+          assert (inv p y /\ inv q y) as H5;
+            [ | destruct H5; apply IHclos_trans2; assumption ].
+          refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H2_);
+            [ | split; assumption ].
+          intros.
+          destruct H5.
+          -- refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H5);
+               [ | assumption ].
+             intros. destruct H7; subst; assumption.
+          -- destruct H2; split.
+             ++ eapply inv_guar; eauto.
+             ++ eapply inv_rely; eauto. eapply sep_r; eauto.
+      + left. right. apply H0; eauto.
+      + eapply t_trans; [ apply IHclos_trans1; assumption | ].
+        assert (inv p y /\ inv q y) as H5;
+          [ | destruct H5; apply IHclos_trans2; assumption ].
+        refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H2_);
+            [ | split; assumption ].
+        intros.
+        destruct H5.
+        * refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H5);
+            [ | assumption ].
+          intros. destruct H7.
+          -- assert (x1 = y1); [ | subst; assumption ]. clear H6.
+             induction H7; [ destruct H6 | ]; subst; reflexivity.
+          -- destruct H6; split.
+             ++ eapply (inv_guar _ x1 y1); eauto.
+             ++ eapply (inv_rely _ x1 y1); eauto. eapply sep_r; eauto.
+        * destruct H2; split.
+          -- eapply (inv_rely _ x0 y0); eauto. eapply sep_l; eauto.
+          -- eapply (inv_guar _ x0 y0); eauto.
+    - destruct H1 as [? [? ?]].
+      repeat split; simpl; intros; subst; eauto.
+      + apply H; assumption.
+      + eapply inv_guar; eauto.
+      + eapply inv_rely; eauto. simpl in H5. destruct H5 as [? [? ?]].
+        eapply sep_r; eauto.
+      + assert (x0 = y).
+        * clear H4 H5. induction H6; [ destruct H4 | ]; subst; reflexivity.
+        * subst. reflexivity.
+      + apply H0; assumption.
+      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
+        eapply inv_rely; eauto. eapply sep_l; eauto.
+      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
+        eapply inv_guar; eauto.
+      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
+        apply H; auto. eapply sep_l; eauto.
+      + destruct H4 as [[? [? ?]] [? ?]].
+        assert (guar p' x0 y).
+        * clear H4 H5 H7 H9. induction H6; [ | etransitivity; eassumption ].
+          destruct H4; [ | assumption ].
+          induction H4; [ | etransitivity; eassumption ].
+          destruct H4; subst; reflexivity.
+        * apply H0; eauto. eapply sep_r; eauto.
   Qed.
 
+  (* NOTE: should still be provable, using the above plus p ** invperm (inv p) = p *)
   Global Instance Proper_eq_perm_sep_conj_perm :
     Proper (eq_perm ==> eq_perm ==> eq_perm) sep_conj_perm.
   Proof.
-    repeat intro. split; apply sep_conj_perm_monotone; auto.
-  Qed.
+  Admitted.
+
 
   Lemma sep_conj_perm_bottom' : forall p, p ** bottom_perm <= p.
   Proof.
     constructor; intros.
-    - split; [| split]; simpl; intuition. apply separate_bottom.
+    - split; [| split]; simpl; intuition.
     - repeat split; auto.
-    - induction H.
-      + destruct H; auto. inversion H. reflexivity.
-      + etransitivity; eauto.
+    - induction H0.
+      + destruct H0; auto. inversion H0. reflexivity.
+      + etransitivity; eauto. apply IHclos_trans2.
+        refine (clos_trans_preserves (inv p) _ _ _ _ _ H0_); [ | assumption ].
+        intros. destruct H1.
+        * eapply inv_guar; eauto.
+        * simpl in H1. subst. assumption.
+    - split; [ assumption | split ].
+      * constructor.
+      * apply separate_bottom.
   Qed.
 
   Lemma sep_conj_perm_bottom : forall p, p ** bottom_perm ≡≡ p.
@@ -912,7 +1049,6 @@ apply H0; auto.
   Lemma sep_conj_perm_top' : forall p, p ** top_perm <= top_perm.
   Proof.
     constructor; intros; simpl in *; intuition.
-    subst. reflexivity.
   Qed.
 
   Lemma sep_conj_perm_top : forall p, top_perm ≡≡ p ** top_perm.
@@ -920,33 +1056,28 @@ apply H0; auto.
     split; [apply lte_r_sep_conj_perm | apply sep_conj_perm_top'].
   Qed.
 
-  Lemma sep_conj_perm_commut' : forall p q, p ** q <= q ** p.
+
+  Lemma separate_sep_conj_perm_l' p q r : p ⊥ q ** r -> p ⊥ (invperm (inv (q ** r)) ** q).
   Proof.
-    constructor.
-    - intros x [? [? ?]]; simpl; split; [| split]; intuition.
-    - intros x y []; repeat split; auto.
-    - intros. induction H.
-      + destruct H; constructor; auto.
-      + etransitivity; eauto.
+    intros.
+    apply separate_antimonotone; [ assumption | ].
+    apply lte_l_sep_conj_perm.
   Qed.
 
-  Lemma sep_conj_perm_commut : forall p q, p ** q ≡≡ q ** p.
+  (* FIXME: this should follow from the above *)
+  Lemma separate_sep_conj_perm_l p q r : p ⊥ q ** r -> p ⊥ (invperm (inv r) ** q).
   Proof.
-    split; apply sep_conj_perm_commut'.
+  Admitted.
+
+  Lemma separate_sep_conj_perm_r: forall p q r, p ⊥ q ** r -> p ⊥ (invperm (inv q) ** r).
+  Proof.
+    intros. apply separate_sep_conj_perm_l.
+    rewrite sep_conj_perm_commut in H. assumption.
   Qed.
 
-  Lemma separate_sep_conj_perm_l: forall p q r, p ⊥ q ** r -> p ⊥ q.
-  Proof.
-    intros. destruct H. constructor; intros.
-    - apply sep_l0. constructor. left. auto.
-    - apply sep_r0. auto.
-  Qed.
-  Lemma separate_sep_conj_perm_r: forall p q r, p ⊥ q ** r -> p ⊥ r.
-  Proof.
-    intros. destruct H. constructor; intros.
-    - apply sep_l0. constructor. right. auto.
-    - apply sep_r0. auto.
-  Qed.
+FIXME: this is where I'm stopping for now
+
+
   Lemma separate_sep_conj_perm: forall p q r, p ⊥ q ->
                                          p ⊥ r ->
                                          r ⊥ q ->
