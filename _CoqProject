@@ -28,7 +28,6 @@ src2/Memory.v
 src2/Lifetime.v
 
 src2/Permissions.v
-src2/PermissionsSpred2.v
 src2/SepStep.v
 src2/Typing.v
 src2/PermType.v

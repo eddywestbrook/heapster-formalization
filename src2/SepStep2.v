@@ -340,6 +340,19 @@ Section step.
       + etransitivity; eauto.
   Qed.
 
+  Lemma sep_conj_perm_assoc p q r :
+    sep_step (p ** (q ** r)) ((p ** q) ** r).
+  Proof.
+    split; repeat intro.
+    - destruct H as ((? & ? & ?) & ? & ?).
+      split; [| split]; auto. split; [| split]; auto.
+      + split; intros.
+        * apply H3 in H6; auto. apply H6. cbn. admit.
+        * apply H3; auto.
+          2: { constructor. right. auto. }
+          split; auto.
+  Qed.
+
   Lemma separate_sep_conj_perm_l: forall p q r, p ⊥ q ** r -> p ⊥ q.
   Proof.
     intros. destruct H. constructor; intros.
