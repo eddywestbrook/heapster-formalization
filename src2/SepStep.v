@@ -21,7 +21,7 @@ Section step.
   (* Definition sep_step (p q : @perm config) := *)
   (*   forall r, p ⊥ r -> q ⊥ r. *)
 
-  Global Instance Proper_eq_perm_sep_step :
+  Global Instance Proper_eq_perm_sep_step_impl :
     Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) sep_step.
   Proof.
     repeat intro. destruct H1.
@@ -31,6 +31,13 @@ Section step.
     erewrite (eq_perm_inv y0). 2: eauto. auto.
 
     intros. rewrite H0. apply H2. rewrite <- H. auto.
+  Qed.
+
+  Global Instance Proper_eq_perm_sep_step_iff :
+    Proper (eq_perm ==> eq_perm ==> Basics.flip iff) sep_step.
+  Proof.
+    constructor; apply Proper_eq_perm_sep_step_impl;
+      try assumption; symmetry; assumption.
   Qed.
 
   Global Instance sep_step_refl : Reflexive sep_step.
@@ -135,6 +142,25 @@ Section step.
           -- split; auto.
       + intros. destruct H1 as (? & ? & ?). destruct H2.
         split; auto. eapply sep_step_rely; eauto.
+  Qed.
+
+  Lemma sep_step_sep_conj_r p1 p2 q : p1 ⊥ q -> sep_step p1 p2 -> sep_step (q ** p1) (q ** p2).
+  Proof.
+    intros. rewrite (sep_conj_perm_commut _ p1). rewrite (sep_conj_perm_commut _ p2).
+    apply sep_step_sep_conj_l; assumption.
+  Qed.
+
+
+  Lemma sep_step_lte p1 p2 q1 : p1 <= q1 -> sep_step p1 p2 ->
+                                sep_step q1 (invperm (inv q1) ** p2).
+  Proof.
+    intros; apply sep_step_rg; intros.
+    - destruct H1 as [? [? ?]]; assumption.
+    - simpl in H2. rewrite clos_trans_eq_or in H2; [ | typeclasses eauto ].
+      rewrite clos_trans_trans in H2; [ | typeclasses eauto ].
+      destruct H1 as [? [? ?]]. apply H; auto. eapply sep_step_guar; eauto.
+    - split; [ intro; eapply inv_rely; eauto | ].
+      destruct H1 as [? [? ?]]. eapply sep_step_rely; eauto.
   Qed.
 
 End step.
