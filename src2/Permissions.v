@@ -52,6 +52,17 @@ Proof.
   - eapply t_trans; eassumption.
 Qed.
 
+Lemma clos_trans_incl_pred {A} (pred : A -> Prop) (R S : A -> A -> Prop)
+  (pres : forall x y, pred x -> R x y -> pred y)
+  (incl : forall x y, pred x -> R x y -> S x y) x y :
+  pred x -> clos_trans A R x y -> clos_trans A S x y.
+Proof.
+  intros; induction H0.
+  - left; apply incl; assumption.
+  - etransitivity; eauto. apply IHclos_trans2.
+    eapply (clos_trans_preserves _ _ pres); eassumption.
+Qed.
+
 Lemma clos_trans_or_l {A} R S x y : clos_trans A R x y ->
                                     clos_trans A (fun x' y' => R x' y' \/ S x' y') x y.
 Proof.
@@ -264,6 +275,11 @@ Section Permissions.
   Proof. intros p q []. auto. Qed.
   Lemma eq_perm_lte_2 : forall p q, p ≡≡ q -> q <= p.
   Proof. intros p q []. auto. Qed.
+
+  Lemma eq_perm_eq_inv p q x : p ≡≡ q -> inv p x <-> inv q x.
+  Proof.
+    intro H. split; intro H0; apply H; assumption.
+  Qed.
 
   (* begin hide *)
   Hint Unfold eq_perm : core.
@@ -1012,7 +1028,7 @@ Section Permissions.
         eapply sep_r; eauto.
   Qed.
 
-  Global Instance Proper_eq_perm_separate :
+  Global Instance Proper_eq_perm_separate_impl :
     Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) separate.
   Proof.
     intros p p' p_eq q q' q_eq p_sep_q. destruct p_eq; destruct q_eq.
@@ -1026,6 +1042,15 @@ Section Permissions.
       + apply H2; assumption.
       + apply H; [ | assumption ]. apply H0; assumption.
   Qed.
+
+  Global Instance Proper_eq_perm_separate_iff :
+    Proper (eq_perm ==> eq_perm ==> iff) separate.
+  Proof.
+    repeat intro; split; apply Proper_eq_perm_separate_impl; try assumption;
+      symmetry; assumption.
+  Qed.
+
+  (*
   Lemma sep_conj_perm_monotone_l p p' q :
     p' <= p -> p' ** q <= p ** q.
   Proof.
@@ -1049,6 +1074,7 @@ Section Permissions.
         destruct H1_. apply IHclos_trans2; auto.
     - destruct H0 as [? [? ?]].
   Abort.
+   *)
 
   Lemma sep_conj_perm_monotone_l p p' q :
     p' <= p -> invperm (inv p) ** p' ** q <= p ** q.
@@ -1089,77 +1115,50 @@ Section Permissions.
         eapply sep_r; eauto.
   Qed.
 
-  (* FIXME: the "easy" proof requires associativity of **
   Lemma sep_conj_perm_monotone_r p q q' :
-    q' <= q -> p ** invperm (inv q) ** q' <= p ** q.
+    q' <= q -> p ** (invperm (inv q) ** q') <= p ** q.
   Proof.
-    intros. rewrite (sep_conj_perm_commut _ q'). rewrite (sep_conj_perm_commut _ q).
+    intros. rewrite (sep_conj_perm_commut _ (invperm (inv q) ** q')).
+    rewrite (sep_conj_perm_commut _ q).
     apply sep_conj_perm_monotone_l.
-
-   *)
-  Lemma sep_conj_perm_monotone : forall p p' q q',
-      p' <= p -> q' <= q -> invperm (inv p) ** invperm (inv q) ** p' ** q' <= p ** q.
-  Proof.
-    constructor; intros; simpl.
-    - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto.
-    - destruct H1 as [? [? ?]]. destruct H2. repeat split; eauto; intros.
-      + eapply inv_rely; eauto.
-      + eapply inv_rely; eauto.
-    - destruct H1 as [? [? ?]]. simpl in H2.
-      rewrite clos_trans_clos_trans_or in H2.
-      rewrite <- clos_trans_or_assoc in H2.
-      rewrite clos_trans_clos_trans_or in H2.
-      rewrite <- clos_trans_or_assoc in H2.
-      rewrite clos_trans_eq_or in H2; [ | repeat left; reflexivity ].
-      rewrite clos_trans_eq_or in H2; [ | repeat left; reflexivity ].
-      induction H2; [ destruct H2 | ].
-      + apply t_step; left; apply H; eauto.
-      + apply t_step; right; apply H0; eauto.
-      + etransitivity; eauto.
-        assert (inv p y /\ inv q y) as H5;
-          [ | destruct H5; apply IHclos_trans2; assumption ].
-        refine (clos_trans_preserves (fun z => inv p z /\ inv q z) _ _ _ _ _ H2_);
-          [ | split; assumption ].
-        intros. destruct H2. destruct H5.
-        * split.
-          -- eapply inv_guar; eauto.
-          -- eapply inv_rely; eauto. eapply sep_r; eauto.
-        * split.
-          -- eapply inv_rely; eauto. eapply sep_l; eauto.
-          -- eapply inv_guar; eauto.
-    - destruct H1 as [? [? ?]].
-      repeat split; simpl; intros; subst; eauto.
-      + apply H; assumption.
-      + eapply inv_guar; eauto.
-      + eapply inv_rely; eauto. simpl in H5. destruct H5 as [? [? ?]].
-        eapply sep_r; eauto.
-      + assert (x0 = y).
-        * clear H4 H5. induction H6; [ destruct H4 | ]; subst; reflexivity.
-        * subst. reflexivity.
-      + apply H0; assumption.
-      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
-        eapply inv_rely; eauto. eapply sep_l; eauto.
-      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
-        eapply inv_guar; eauto.
-      + simpl in H5; destruct H5 as [[? [? ?]] [? ?]].
-        apply H; auto. eapply sep_l; eauto.
-      + destruct H4 as [[? [? ?]] [? ?]].
-        rewrite clos_trans_clos_trans_or in H6.
-        rewrite <- clos_trans_or_assoc in H6.
-        rewrite clos_trans_eq_or in H6; [ | intro; left; reflexivity ].
-        rewrite clos_trans_eq_or in H6; [ | typeclasses eauto ].
-        rewrite clos_trans_trans in H6; [ | typeclasses eauto ].
-        apply H0; eauto. eapply sep_r; eauto.
+    assumption.
   Qed.
 
-  (* NOTE: should still be provable, using the above plus p ** invperm (inv p) = p *)
+  Lemma sep_conj_perm_monotone p p' q q' :
+    p' <= p -> q' <= q -> (invperm (inv p) ** p') ** (invperm (inv q) ** q') <= p ** q.
+  Proof.
+    etransitivity;
+      [ apply sep_conj_perm_monotone_l | apply sep_conj_perm_monotone_r ];
+      assumption.
+  Qed.
+
+  Lemma eq_perm_sep_conj_lte_l p p' q : eq_perm p p' -> p ** q <= p' ** q.
+  Proof.
+    constructor; intros.
+    - destruct H0; destruct H1; split; eauto.
+    - destruct H0; destruct H1; split; eauto.
+    - simpl in H0. rewrite (eq_perm_eq_inv p' p) in H0; [ | symmetry; assumption ].
+      rewrite <- H in H0.
+      eapply (clos_trans_incl_pred (inv (p ** q)));
+        [ | | apply H0 | apply H1 ]; intros.
+      + eapply inv_guar; [ | eassumption ].
+        destruct H3; apply t_step; [ left | right ]; assumption.
+      + destruct H3; [ | right; assumption ].
+        left. apply H; [ | assumption ]. apply H. destruct H2; assumption.
+    - simpl in H0.
+      rewrite (eq_perm_eq_inv p' p) in H0; [ | symmetry; assumption ].
+      rewrite <- H in H0. apply H0.
+  Qed.
+
   Global Instance Proper_eq_perm_sep_conj_perm :
     Proper (eq_perm ==> eq_perm ==> eq_perm) sep_conj_perm.
   Proof.
-    repeat intro. split; auto.
-    - etransitivity. 2: eapply sep_conj_perm_monotone; eauto.
-
-  Admitted.
+    repeat intro.
+    etransitivity;
+      [ split; apply eq_perm_sep_conj_lte_l; [ | symmetry ]; eassumption | ].
+    rewrite (sep_conj_perm_commut _ x0). rewrite (sep_conj_perm_commut _ y0).
+    split; apply eq_perm_sep_conj_lte_l; [ | symmetry ]; eassumption.
+  Qed.
 
 
   Lemma sep_conj_perm_bottom' : forall p, p ** bottom_perm <= p.
@@ -1197,6 +1196,7 @@ Section Permissions.
     apply separate_antimonotone; [ assumption | ].
     apply lte_l_sep_conj_perm.
   Qed.
+
 
   (* FIXME: this should follow from the above *)
   (* Paul : the above lemma has q ⊥ r in its invariant, but this one does not, so we cannot use the assumption *)
