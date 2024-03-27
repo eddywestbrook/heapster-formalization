@@ -1197,6 +1197,43 @@ Section Permissions.
     apply lte_l_sep_conj_perm.
   Qed.
 
+  Lemma sep_conj_perm_assoc p q r :
+    eq_perm (p ** (q ** r)) ((p ** (invperm (inv (q ** r)) ** q)) ** r).
+  Proof.
+    split; constructor; intros.
+    - destruct H0 as [[? [? ?]] ?]. repeat split; assumption.
+    - destruct H0 as [[? [? ?]] ?]. repeat split; assumption.
+    - admit. (* Should be straightforward *)
+    - destruct H as [[? [[[? [? ?]] [? ?]] ?]] [? ?]].
+      split; [ assumption | ].
+      split; [ split; [ | split ]; assumption | ].
+      split; intros.
+      + apply clos_trans_trans; [ typeclasses eauto | ].
+        refine (clos_trans_incl_pred
+                  (fun z => inv p z /\ inv (q ** r) z) _ _ _ _ _ _ _ H10); intros.
+        * admit. (* straightforward *)
+        * destruct H12.
+          -- apply (sep_l _ _ H5).
+             ++ destruct H11. split; [ | split ]; try assumption.
+                destruct H13; assumption.
+             ++ destruct H11; assumption.
+             ++ apply t_step. right; assumption.
+          -- apply (sep_l _ _ H7).
+             ++ destruct H11 as [? [? [? ?]]]; assumption.
+             ++ destruct H11. split; [ assumption | ].
+                split; [ | assumption ].
+                split; [ apply H13 | ].
+                split; [ | assumption ].
+                destruct H13; assumption.
+             ++ assumption.
+        * split; assumption.
+      + admit. (* Should be possible *)
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+  Admitted.
+
 
   (* FIXME: this should follow from the above *)
   (* Paul : the above lemma has q ⊥ r in its invariant, but this one does not, so we cannot use the assumption *)
