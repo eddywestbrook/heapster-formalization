@@ -146,6 +146,30 @@ Section Permissions.
   Global Instance guar_is_preorder p : PreOrder (guar p) := guar_PO p.
   (* end hide *)
 
+
+  (* Equivalence of the guarantees of two permissions *)
+  Definition guar_eq (p q : perm) : Prop := forall x y, guar p x y <-> guar q x y.
+
+  Global Instance guar_eq_Equivalence : Equivalence guar_eq.
+  Proof.
+    constructor; repeat intro.
+    - reflexivity.
+    - symmetry; apply H.
+    - etransitivity; [ apply H | apply H0 ].
+  Qed.
+
+  Global Instance guar_Proper_guar_eq_impl : Proper (guar_eq ==> eq ==> eq ==>
+                                                       Basics.flip Basics.impl) guar.
+  Proof.
+    repeat intro; subst; apply H. assumption.
+  Qed.
+
+  Global Instance guar_Proper_guar_eq : Proper (guar_eq ==> eq ==> eq ==> iff) guar.
+  Proof.
+    repeat intro. subst. apply H.
+  Qed.
+
+
   (** ** Permission ordering *)
   (* Bigger permission has a smaller invariant precondition, and rely, and a
      bigger guarantee, where the last three comparisons are relativized to the
@@ -944,6 +968,53 @@ Section Permissions.
   Qed.
    *)
 
+  Global Instance Proper_guar_eq_sep_conj_perm :
+    Proper (guar_eq ==> guar_eq ==> guar_eq) sep_conj_perm.
+  Proof.
+    repeat intro; split; intros; eapply clos_trans_incl; try apply H1;
+      intros; destruct H2;
+      try (left; apply H; assumption); right; apply H0; assumption.
+  Qed.
+
+  Lemma sep_conj_guar_eq_commut' p q x y : guar (p ** q) x y -> guar (q ** p) x y.
+  Proof.
+    intros. eapply clos_trans_incl; [ | apply H ]; intros.
+    destruct H0; [ right | left ]; assumption.
+  Qed.
+
+  Lemma sep_conj_guar_eq_commut p q : guar_eq (p ** q) (q ** p).
+  Proof.
+    - repeat intro. split; intro; apply sep_conj_guar_eq_commut'; assumption.
+  Qed.
+
+  Lemma sep_conj_guar_eq_assoc' p q r x y : guar (p ** (q ** r)) x y ->
+                                            guar ((p ** q) ** r) x y.
+  Proof.
+    simpl; intros.
+    rewrite clos_trans_clos_trans_or.
+    rewrite clos_trans_or_commut in H.
+    rewrite clos_trans_clos_trans_or in H.
+    rewrite clos_trans_or_commut in H.
+    rewrite <- clos_trans_or_assoc. assumption.
+  Qed.
+
+  Lemma sep_conj_guar_eq_assoc p q r : guar_eq (p ** (q ** r)) ((p ** q) ** r).
+  Proof.
+    split; [ apply sep_conj_guar_eq_assoc' | ].
+    rewrite (sep_conj_guar_eq_commut (p ** q) r).
+    rewrite (sep_conj_guar_eq_commut p (q ** r)).
+    rewrite (sep_conj_guar_eq_commut q r).
+    rewrite (sep_conj_guar_eq_commut p q).
+    apply sep_conj_guar_eq_assoc'.
+  Qed.
+
+  Lemma sep_conj_invperm_guar_eq pred p : guar_eq (invperm pred ** p) p.
+  Proof.
+    repeat intro. simpl. rewrite clos_trans_eq_or; [ | typeclasses eauto ].
+    rewrite clos_trans_trans; [ | typeclasses eauto ].
+    reflexivity.
+  Qed.
+
   Lemma sep_conj_perm_commut' : forall p q, p ** q <= q ** p.
   Proof.
     constructor.
@@ -951,9 +1022,7 @@ Section Permissions.
     - intros x y [? [? ?]]; simpl; split; intuition.
     (* - intros x y [? [? ?]]; simpl; split; intuition. *)
     (* - intros x y []; repeat split; auto. *)
-    - intros. clear H. induction H0.
-      + destruct H; constructor; auto.
-      + etransitivity; eauto.
+    - intros; apply sep_conj_guar_eq_commut; assumption.
     - intros x [? [? ?]]; simpl; split; intuition.
   Qed.
 
@@ -999,9 +1068,8 @@ Section Permissions.
     constructor; intros; simpl.
     - split; auto.
     - split; intros; auto. eapply inv_rely; eassumption.
-    - simpl in H0. apply clos_trans_trans; [ typeclasses eauto | ].
-      eapply clos_trans_incl; [ | eassumption ]. intros.
-      destruct H1; [ assumption | subst; reflexivity ].
+    - rewrite sep_conj_guar_eq_commut in H0.
+      rewrite sep_conj_invperm_guar_eq in H0. assumption.
     - split; [ | split ]; try assumption.
       apply separate_invperm; intros. eapply inv_guar; eauto.
   Qed.
@@ -1079,14 +1147,12 @@ Section Permissions.
   Lemma sep_conj_perm_monotone_l p p' q :
     p' <= p -> invperm (inv p) ** p' ** q <= p ** q.
   Proof.
-    constructor; simpl; intros.
+    constructor; intros.
     - destruct H0 as [? [? ?]]. destruct H1. repeat split; eauto.
-    - destruct H0 as [? [? ?]]. destruct H1. repeat split; eauto; intros.
+    - simpl. destruct H0 as [? [? ?]]. destruct H1. repeat split; eauto; intros.
       eapply inv_rely; eauto.
-    - destruct H0 as [? [? ?]]. simpl in H1.
-      rewrite clos_trans_clos_trans_or in H1.
-      rewrite <- clos_trans_or_assoc in H1.
-      rewrite clos_trans_eq_or in H1; [ | repeat left; reflexivity ].
+    - destruct H0 as [? [? ?]].
+      rewrite sep_conj_invperm_guar_eq in H1.
       induction H1; [ destruct H1 | ].
       + apply t_step; left; apply H; eauto.
       + apply t_step; right; assumption.
@@ -1227,12 +1293,42 @@ Section Permissions.
                 destruct H13; assumption.
              ++ assumption.
         * split; assumption.
-      + admit. (* Should be possible *)
+      + split; [ apply (sep_r _ _ H5) | apply (sep_r _ _ H7) ].
+        * assumption.
+        * split; [ | split ]; try assumption. destruct H9; assumption.
+        * assumption.
+        * split; [ | split ]; try assumption.
+          split; [ | split ]; try assumption.
+          destruct H9; assumption.
+        * destruct H9 as [? [? ?]]; assumption.
+        * apply t_step; left; assumption.
+    - destruct H0 as [? [? ?]]; repeat split; assumption.
+    - destruct H0 as [? [? ?]]. split; [ | assumption ].
+      split; [ assumption | ]. split; [ | assumption ].
+      destruct H as [? [? ?]]. split.
+      + destruct H5. eapply inv_rely; eassumption.
+      + destruct H5 as [? [? ?]]; split; [ | assumption ].
+        eapply inv_rely; eassumption.
+    - simpl in H0. rewrite clos_trans_clos_trans_or in H0.
+      rewrite <- clos_trans_or_assoc in H0.
+
+rewrite clos_trans_eq_or in H0.
+
+destruct H5. assumption.
+
+repeat split; try assumption.
+
+admit. (* Should be possible *)
     - admit.
     - admit.
     - admit.
     - admit.
   Admitted.
+
+
+  Lemma sep_conj_perm_assoc_sep p q r :
+    p ⊥ q -> q ⊥ r -> eq_perm (p ** (q ** r)) ((p ** q) ** r).
+
 
 
   (* FIXME: this should follow from the above *)
