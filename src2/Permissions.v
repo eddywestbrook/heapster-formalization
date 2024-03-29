@@ -1256,11 +1256,150 @@ Section Permissions.
   Qed.
 
 
-  Lemma separate_sep_conj_perm_l' p q r : p ⊥ q ** r -> p ⊥ (invperm (inv (q ** r)) ** q).
+  Lemma separate_sep_conj_perm_l p q r : p ⊥ q ** r -> p ⊥ (invperm (inv (q ** r)) ** q).
   Proof.
     intros.
     apply separate_antimonotone; [ assumption | ].
     apply lte_l_sep_conj_perm.
+  Qed.
+
+  (*
+  Lemma separate_invperm_conj_conj p q :
+    p ⊥ q -> eq_perm (invperm (inv (p ** q)) ** p) (invperm (inv q) ** p).
+  Proof.
+    intro. simpl.
+    repeat rewrite <- sep_conj_invperm_conj.
+  Admitted.
+   *)
+
+  Lemma separate_conj_assoc p q r : p ⊥ q ** r -> q ⊥ r -> p ** q ⊥ r.
+  Proof.
+    split; [ split | ]; intros.
+    - destruct H2 as [? [? ?]].
+      eapply (sep_l _ _ H); try eassumption.
+      + split; [ | split ]; assumption.
+      + apply t_step; right; assumption.
+    - destruct H2 as [? [? ?]].
+      eapply (sep_l _ _ H0); assumption.
+    - induction H3; [ destruct H3 | ].
+      + destruct H1 as [? [? ?]].
+        refine (proj2 (sep_r _ _ H _ _ _ _ _)); try assumption.
+        split; [ | split ]; assumption.
+      + destruct H1 as [? [? ?]].
+        apply (sep_r _ _ H0); assumption.
+      + assert (rely r x y); [ apply IHclos_trans1; assumption | ].
+        etransitivity; [ eassumption | ].
+        apply IHclos_trans2.
+        * eapply inv_guar; eassumption.
+        * eapply inv_rely; eassumption.
+  Qed.
+
+  (* FIXME: this does not hold! *)
+  (*
+  Lemma sep_conj_perm_assoc_invperm' p q pred :
+    (p ** (invperm pred ** q)) <= ((p ** invperm pred) ** q).
+  Proof.
+    constructor; intros.
+    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
+    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
+    - rewrite sep_conj_invperm_guar_eq in H0.
+      rewrite (sep_conj_guar_eq_commut p).
+      rewrite sep_conj_invperm_guar_eq. assumption.
+    - destruct H as [[? [? ?]] [? ?]].
+      split; [ assumption | ].
+      split; [ split; [ | split ] | ]; try assumption.
+      + symmetry; apply separate_invperm; intros.
+        refine (proj2 (sep_l _ _ H3 _ _ _ _ _) H4); try assumption.
+   *)
+
+  (* FIXME: this also does not hold
+  Lemma separate_sep_conj_add_inv p q r :
+    p ** q ⊥ r -> p ** (invperm (inv r) ** q) ⊥ r.
+  Proof.
+    split; intros.
+    - assert (rely (p ** q) x y);
+      [ destruct H1 as [? [[? [? ?]] ?]]; apply (sep_l _ _ H);
+        try assumption; split; [ | split ]; try assumption | ].
+  Abort.
+
+FIXME: maybe the above can be proved with p _|_ q <-> p ** invperm q _|_ q and
+with associativity of invperm
+
+FIXME: use the above 3 lemmas to simplify sep_conj_perm_assoc_helper and to
+prove the last case of sep_conj_perm_assoc
+   *)
+
+  Lemma separate_invperm_self_conj p q : invperm (inv (p ** q)) ⊥ p.
+  Proof.
+    symmetry; apply separate_invperm; intros.
+    destruct H as [? [? ?]].
+    split; [ | split ].
+    - eapply inv_guar; eassumption.
+    - eapply inv_rely; [ | eassumption ]. eapply sep_r; eassumption.
+    - assumption.
+  Qed.
+
+  Lemma sep_conj_perm_assoc_helper1 p q r :
+    p ⊥ invperm (inv (q ** r)) ** q ->
+    p ** (invperm (inv (q ** r)) ** q) ⊥ r ->
+    p ⊥ q ** r.
+  Proof.
+    split; [ | split ]; intros.
+    - induction H3; [ destruct H3 | ].
+      + apply (sep_l _ _ H);
+            [ | | apply sep_conj_invperm_guar_eq ]; try assumption.
+        split; [ assumption | ].
+        split; [ destruct H1; assumption | ].
+        apply separate_invperm_self_conj.
+      + destruct H1 as [? [? ?]].
+        refine (proj1 (sep_l _ _ H0 _ _ _ _ _)); try assumption.
+        split; [ | split ]; try assumption.
+        split; [ | split ]; try assumption.
+        * split; [ | split ]; try assumption.
+        * apply separate_invperm_self_conj.
+      + assert (rely p x y); [ apply IHclos_trans1; assumption | ].
+        etransitivity; [ eassumption | ].
+        apply IHclos_trans2.
+        eapply inv_guar; eassumption.
+        eapply inv_rely; eassumption.
+    - refine (proj2 (sep_r _ _ H _ _ _ _ _)); try assumption.
+      split; [ assumption | ].
+      split; [ destruct H2; assumption | ].
+      apply separate_invperm_self_conj.
+    - apply (sep_r _ _ H0); try eassumption.
+      + split; [ assumption | ].
+        split; [ | assumption ].
+        split; [ assumption | ].
+        split; [ | apply separate_invperm_self_conj ].
+        destruct H2; assumption.
+      + destruct H2 as [? [? ?]]; assumption.
+      + apply t_step; left; assumption.
+  Qed.
+
+  Lemma sep_conj_perm_assoc_helper2 p q r :
+    q ⊥ r -> p ⊥ q ** r -> p ** (invperm (inv (q ** r)) ** q) ⊥ r.
+  Proof.
+    split; [ split; [ | split ] | ]; intros.
+    - destruct H2 as [? [[? [? ?]] ?]].
+      apply (sep_l _ _ H0); try assumption.
+      apply t_step; right; assumption.
+    - destruct H2 as [? [[? [? ?]] ?]].
+      split; [ | split; [ | assumption ] ].
+      + eapply inv_rely; try eassumption.
+        apply (sep_l _ _ H); assumption.
+      + destruct H8 as [? [? ?]]; eapply inv_guar; eassumption.
+    - destruct H2 as [? [[? [? ?]] ?]].
+      apply (sep_l _ _ H); assumption.
+    - rewrite sep_conj_invperm_guar_eq in H3.
+      induction H3; [ destruct H3 | ].
+      + destruct H1 as [? [[? [? ?]] ?]].
+        refine (proj2 (sep_r _ _ H0 _ _ _ _ _)); assumption.
+      + destruct H1 as [? [[? [? ?]] ?]]. apply (sep_r _ _ H); assumption.
+      + assert (rely r x y); [ apply IHclos_trans1; assumption | ].
+        etransitivity; [ eassumption | ].
+        apply IHclos_trans2; [ | eapply inv_rely; eassumption ].
+        eapply inv_guar; [ | eassumption ].
+        rewrite sep_conj_invperm_guar_eq. assumption.
   Qed.
 
   Lemma sep_conj_perm_assoc p q r :
@@ -1269,39 +1408,13 @@ Section Permissions.
     split; constructor; intros.
     - destruct H0 as [[? [? ?]] ?]. repeat split; assumption.
     - destruct H0 as [[? [? ?]] ?]. repeat split; assumption.
-    - admit. (* Should be straightforward *)
+    - rewrite sep_conj_invperm_guar_eq.
+      rewrite sep_conj_guar_eq_assoc in H0.
+      assumption.
     - destruct H as [[? [[[? [? ?]] [? ?]] ?]] [? ?]].
       split; [ assumption | ].
       split; [ split; [ | split ]; assumption | ].
-      split; intros.
-      + apply clos_trans_trans; [ typeclasses eauto | ].
-        refine (clos_trans_incl_pred
-                  (fun z => inv p z /\ inv (q ** r) z) _ _ _ _ _ _ _ H10); intros.
-        * admit. (* straightforward *)
-        * destruct H12.
-          -- apply (sep_l _ _ H5).
-             ++ destruct H11. split; [ | split ]; try assumption.
-                destruct H13; assumption.
-             ++ destruct H11; assumption.
-             ++ apply t_step. right; assumption.
-          -- apply (sep_l _ _ H7).
-             ++ destruct H11 as [? [? [? ?]]]; assumption.
-             ++ destruct H11. split; [ assumption | ].
-                split; [ | assumption ].
-                split; [ apply H13 | ].
-                split; [ | assumption ].
-                destruct H13; assumption.
-             ++ assumption.
-        * split; assumption.
-      + split; [ apply (sep_r _ _ H5) | apply (sep_r _ _ H7) ].
-        * assumption.
-        * split; [ | split ]; try assumption. destruct H9; assumption.
-        * assumption.
-        * split; [ | split ]; try assumption.
-          split; [ | split ]; try assumption.
-          destruct H9; assumption.
-        * destruct H9 as [? [? ?]]; assumption.
-        * apply t_step; left; assumption.
+      apply sep_conj_perm_assoc_helper1; assumption.
     - destruct H0 as [? [? ?]]; repeat split; assumption.
     - destruct H0 as [? [? ?]]. split; [ | assumption ].
       split; [ assumption | ]. split; [ | assumption ].
@@ -1309,98 +1422,17 @@ Section Permissions.
       + destruct H5. eapply inv_rely; eassumption.
       + destruct H5 as [? [? ?]]; split; [ | assumption ].
         eapply inv_rely; eassumption.
-    - simpl in H0. rewrite clos_trans_clos_trans_or in H0.
-      rewrite <- clos_trans_or_assoc in H0.
-
-rewrite clos_trans_eq_or in H0.
-
-destruct H5. assumption.
-
-repeat split; try assumption.
-
-admit. (* Should be possible *)
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-  Admitted.
-
-
-  Lemma sep_conj_perm_assoc_sep p q r :
-    p ⊥ q -> q ⊥ r -> eq_perm (p ** (q ** r)) ((p ** q) ** r).
-
-
-
-  (* FIXME: this should follow from the above *)
-  (* Paul : the above lemma has q ⊥ r in its invariant, but this one does not, so we cannot use the assumption *)
-  Lemma separate_sep_conj_perm_l p q r : p ⊥ q ** r -> p ⊥ (invperm (inv r) ** q).
-  Proof.
-    intros H.
-    split; intros.
-    - apply H; auto. destruct H0 as (? & ? & ?).
-
-      split; [| split]; auto. admit.
-      cbn in H2.
-      rewrite clos_trans_eq_or in H2; auto.
-      2: { repeat intro. reflexivity. }
-      constructor 1. left.
-      rewrite clos_trans_trans in H2; auto. repeat intro. etransitivity; eauto.
-    -
-
-    (* apply separate_antimonotone. *)
-    (* (* apply separate_sep_conj_perm_l' in H. *) *)
-    (* destruct H. cbn in *. split; intros; cbn in *. *)
-    (* - apply sep_l0; auto. split; auto. destruct H as (? & ? & ?). split; auto. split; auto. *)
-    (*   cbn in H3. *)
-  Abort.
-
-  Lemma separate_sep_conj_perm_r: forall p q r, p ⊥ q ** r -> p ⊥ (invperm (inv q) ** r).
-  Proof.
-    intros.
-    (* apply separate_sep_conj_perm_l. *)
-    (* rewrite sep_conj_perm_commut in H. assumption. *)
-  Abort.
-
-
-  (* FIXME: this is where I'm stopping for now *)
-
-
-  Lemma separate_sep_conj_perm: forall p q r, p ⊥ q ->
-                                         p ⊥ r ->
-                                         r ⊥ q ->
-                                         p ⊥ q ** r.
-  Proof.
-    intros. constructor; intros.
-    - induction H4.
-      + destruct H4. apply H; auto. apply H2. apply H0; auto. apply H2.
-      + etransitivity; eauto.
-        apply IHclos_trans2; auto.
-    (* should hold by H4_ and separateness *)
-        admit. admit.
-    - split; [apply H | apply H0]; auto; apply H3.
-  Admitted.
-
-  Lemma sep_conj_perm_assoc p q r : eq_perm (p ** (q ** r)) ((p ** q) ** r).
-  Proof.
-    split; constructor; simpl; intros.
-    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
-    - destruct H0 as [[? ?] ?]. repeat split; assumption.
-    - rewrite clos_trans_clos_trans_or.
-      rewrite clos_trans_or_commut in H0.
-      rewrite clos_trans_clos_trans_or in H0.
-      rewrite clos_trans_or_commut in H0.
-      rewrite clos_trans_or_assoc in H0. assumption.
-    - destruct H as ((? & ? & ?) & ? & ?).
-      split; [| split]; auto. split; [| split]; auto.
-      + (* destruct H3. cbn in *. *)
-        (* destruct H1. cbn in *. *)
-        split; intros.
-        * apply H3 in H6; auto. apply H6. admit.
-        * apply H3; auto.
-      (* FIXME *)
-      (* rewrite <- clos_trans_clos_trans_or in H0. *)
-      (* rewrite <- clos_trans_or_assoc. *)
-  Abort.
+    - rewrite sep_conj_invperm_guar_eq in H0.
+      rewrite sep_conj_guar_eq_assoc.
+      assumption.
+    - destruct H as [? [[? [? ?]] ?]].
+      split; [ split; [ | split; [ split; [ | split ] | ] ] | split ];
+        try assumption.
+      * split; [ | split ]; assumption.
+      * apply separate_invperm_self_conj.
+      * apply separate_sep_conj_perm_l; assumption.
+      * apply sep_conj_perm_assoc_helper2; assumption.
+  Qed.
 
 
   (*
@@ -1633,6 +1665,13 @@ admit. (* Should be possible *)
       etransitivity; eauto. apply sep_conj_perm_commut.
       symmetry; auto.
   Qed.
+
+  Lemma sep_conj_Perms_assoc_lte P Q R : P * (Q * R) ⊑ (P * Q) * R.
+  Proof.
+    intros pqr H.
+    destruct H as [pq [r [[p [q [? [? [? ?]]]]] [? [? ?]]]]].
+    simpl.
+  Abort.
 
   (*
   Lemma sep_conj_Perms_assoc : forall P Q R, P * (Q * R) ≡ (P * Q) * R.
