@@ -1062,6 +1062,11 @@ Section Permissions.
     - destruct H as [? [? ?]]. split; assumption.
   Qed.
 
+  Lemma sep_conj_l_invperm_conj pred1 pred2 p :
+    eq_perm (invperm pred1 ** (invperm pred2 ** p))
+      (invperm (fun x => pred1 x /\ pred2 x) ** p).
+  Proof.
+  Admitted.
 
   Lemma sep_conj_self_invperm' p : p ** invperm (inv p) <= p.
   Proof.
@@ -1670,8 +1675,25 @@ prove the last case of sep_conj_perm_assoc
   Proof.
     intros pqr H.
     destruct H as [pq [r [[p [q [? [? [? ?]]]]] [? [? ?]]]]].
+    pose proof (sep_conj_perm_monotone_l _ _ r H1).
+    rewrite (sep_conj_perm_commut _ r) in H6.
+    rewrite (sep_conj_perm_commut p) in H6.
+    rewrite (sep_conj_perm_assoc _ q) in H6.
+    rewrite (sep_conj_perm_assoc r) in H6.
+    rewrite sep_conj_l_invperm_conj in H6.
+    rewrite sep_conj_l_invperm_conj in H6.
+    rewrite (sep_conj_perm_commut _ p) in H6.
+    rewrite (sep_conj_perm_commut r) in H6.
     simpl.
-  Abort.
+    exists p. eexists.
+    split; [ assumption | ].
+    split; [ | split; [ etransitivity; eassumption | ]].
+    - eexists; exists r. split; [ | split; [ assumption | ]; split; [ reflexivity | ]].
+      + eapply Perms_upwards_closed; [ eassumption | ].
+        apply lte_r_sep_conj_perm.
+      + admit.
+    - admit.
+  Admitted.
 
   (*
   Lemma sep_conj_Perms_assoc : forall P Q R, P * (Q * R) ≡ (P * Q) * R.
