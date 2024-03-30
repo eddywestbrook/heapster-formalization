@@ -510,6 +510,12 @@ Section Permissions.
     constructor; simpl; intros; auto.
   Qed.
 
+  (* An equivalent predicate gives an equal invperm *)
+  Lemma eq_invperm (pred1 pred2 : config -> Prop) :
+    (forall x, pred1 x <-> pred2 x) -> eq_perm (invperm pred2) (invperm pred1).
+  Proof.
+    constructor; simpl; intros; apply lte_invperm; apply H.
+  Qed.
 
   (*
   Program Definition join_perm' (ps: perm -> Prop) (H: exists p, ps p) : perm :=
@@ -1682,17 +1688,32 @@ prove the last case of sep_conj_perm_assoc
     rewrite (sep_conj_perm_assoc r) in H6.
     rewrite sep_conj_l_invperm_conj in H6.
     rewrite sep_conj_l_invperm_conj in H6.
+    rewrite (eq_invperm (inv pq)) in H6.
+    2: {
+      split; intros.
+      - split;
+          [ | rewrite sep_conj_perm_commut in H1; eapply inv_inc; eassumption ].
+        split; [ | assumption ].
+        split.
+        + split; [ assumption | ].
+          admit.
+        + admit.
+      - admit.
+    }
     rewrite (sep_conj_perm_commut _ p) in H6.
     rewrite (sep_conj_perm_commut r) in H6.
-    simpl.
     exists p. eexists.
     split; [ assumption | ].
     split; [ | split; [ etransitivity; eassumption | ]].
     - eexists; exists r. split; [ | split; [ assumption | ]; split; [ reflexivity | ]].
       + eapply Perms_upwards_closed; [ eassumption | ].
         apply lte_r_sep_conj_perm.
+      + symmetry. apply separate_antimonotone; [ symmetry; assumption | ].
+        etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+    - symmetry. rewrite sep_conj_perm_commut.
+      apply separate_conj_assoc.
       + admit.
-    - admit.
+      + admit.
   Admitted.
 
   (*
