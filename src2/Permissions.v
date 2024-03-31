@@ -1068,12 +1068,6 @@ Section Permissions.
     - destruct H as [? [? ?]]. split; assumption.
   Qed.
 
-  Lemma sep_conj_l_invperm_conj pred1 pred2 p :
-    eq_perm (invperm pred1 ** (invperm pred2 ** p))
-      (invperm (fun x => pred1 x /\ pred2 x) ** p).
-  Proof.
-  Admitted.
-
   Lemma sep_conj_self_invperm' p : p ** invperm (inv p) <= p.
   Proof.
     constructor; intros; simpl.
@@ -1305,52 +1299,51 @@ Section Permissions.
         * eapply inv_rely; eassumption.
   Qed.
 
-  (* FIXME: this does not hold! *)
-  (*
-  Lemma sep_conj_perm_assoc_invperm' p q pred :
-    (p ** (invperm pred ** q)) <= ((p ** invperm pred) ** q).
-  Proof.
-    constructor; intros.
-    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
-    - destruct H0 as [[? ?] ?]. split; [ | split ]; assumption.
-    - rewrite sep_conj_invperm_guar_eq in H0.
-      rewrite (sep_conj_guar_eq_commut p).
-      rewrite sep_conj_invperm_guar_eq. assumption.
-    - destruct H as [[? [? ?]] [? ?]].
-      split; [ assumption | ].
-      split; [ split; [ | split ] | ]; try assumption.
-      + symmetry; apply separate_invperm; intros.
-        refine (proj2 (sep_l _ _ H3 _ _ _ _ _) H4); try assumption.
-   *)
 
-  (* FIXME: this also does not hold
-  Lemma separate_sep_conj_add_inv p q r :
-    p ** q ⊥ r -> p ** (invperm (inv r) ** q) ⊥ r.
+  Lemma sep_conj_perm_assoc' p q r :
+    q ⊥ r -> (p ** (q ** r)) <= ((p ** q) ** r).
   Proof.
     split; intros.
-    - assert (rely (p ** q) x y);
-      [ destruct H1 as [? [[? [? ?]] ?]]; apply (sep_l _ _ H);
-        try assumption; split; [ | split ]; try assumption | ].
-  Abort.
+    - destruct H1 as [[? ?] ?]. split; [ | split ]; assumption.
+    - destruct H1 as [[? ?] ?]. split; [ | split ]; assumption.
+    - rewrite sep_conj_guar_eq_assoc in H1. assumption.
+    - destruct H0 as [[? [? ?]] [? ?]].
+      split; [ assumption | ].
+      split; [ split; [ | split ]; assumption | ].
+      symmetry. rewrite sep_conj_perm_commut.
+      apply separate_conj_assoc; symmetry;
+        [ rewrite sep_conj_perm_commut | ]; assumption.
+  Qed.
 
-FIXME: maybe the above can be proved with p _|_ q <-> p ** invperm q _|_ q and
-with associativity of invperm
+  Lemma sep_conj_perm_assoc p q r :
+    p ⊥ q -> q ⊥ r -> eq_perm (p ** (q ** r)) ((p ** q) ** r).
+  Proof.
+    split; [ apply sep_conj_perm_assoc'; assumption | ].
+    rewrite (sep_conj_perm_commut (p ** q) r).
+    rewrite (sep_conj_perm_commut p (q ** r)).
+    rewrite (sep_conj_perm_commut p q).
+    rewrite (sep_conj_perm_commut q r).
+    apply sep_conj_perm_assoc'; symmetry; assumption.
+  Qed.
 
-FIXME: use the above 3 lemmas to simplify sep_conj_perm_assoc_helper and to
-prove the last case of sep_conj_perm_assoc
-   *)
+
+  Lemma separate_bigger_invperm p q : p <= q -> invperm (inv q) ⊥ p.
+  Proof.
+    symmetry; apply separate_invperm; intros.
+    eapply inv_guar; [ | eassumption ].
+    eapply guar_inc; eassumption.
+  Qed.
+
 
   Lemma separate_invperm_self_conj p q : invperm (inv (p ** q)) ⊥ p.
   Proof.
-    symmetry; apply separate_invperm; intros.
-    destruct H as [? [? ?]].
-    split; [ | split ].
-    - eapply inv_guar; eassumption.
-    - eapply inv_rely; [ | eassumption ]. eapply sep_r; eassumption.
-    - assumption.
+    apply separate_bigger_invperm. apply lte_l_sep_conj_perm.
   Qed.
 
-  Lemma sep_conj_perm_assoc_helper1 p q r :
+  (* FIXME: sep_conj_perm_assoc_nonsep may not be necessary, and even if it is
+  it could probably be proved in a better way using sep_conj_perm_assoc *)
+
+  Lemma sep_conj_perm_assoc_nonsep_helper1 p q r :
     p ⊥ invperm (inv (q ** r)) ** q ->
     p ** (invperm (inv (q ** r)) ** q) ⊥ r ->
     p ⊥ q ** r.
@@ -1387,7 +1380,7 @@ prove the last case of sep_conj_perm_assoc
       + apply t_step; left; assumption.
   Qed.
 
-  Lemma sep_conj_perm_assoc_helper2 p q r :
+  Lemma sep_conj_perm_assoc_nonsep_helper2 p q r :
     q ⊥ r -> p ⊥ q ** r -> p ** (invperm (inv (q ** r)) ** q) ⊥ r.
   Proof.
     split; [ split; [ | split ] | ]; intros.
@@ -1413,7 +1406,9 @@ prove the last case of sep_conj_perm_assoc
         rewrite sep_conj_invperm_guar_eq. assumption.
   Qed.
 
-  Lemma sep_conj_perm_assoc p q r :
+  (* FIXME: the <= direction should use sep_conj_perm_assoc' after first
+  rewriting (q ** r) on the left to ((invperm (inv (q ** r)) ** q) ** r) *)
+  Lemma sep_conj_perm_assoc_nonsep p q r :
     eq_perm (p ** (q ** r)) ((p ** (invperm (inv (q ** r)) ** q)) ** r).
   Proof.
     split; constructor; intros.
@@ -1425,7 +1420,7 @@ prove the last case of sep_conj_perm_assoc
     - destruct H as [[? [[[? [? ?]] [? ?]] ?]] [? ?]].
       split; [ assumption | ].
       split; [ split; [ | split ]; assumption | ].
-      apply sep_conj_perm_assoc_helper1; assumption.
+      apply sep_conj_perm_assoc_nonsep_helper1; assumption.
     - destruct H0 as [? [? ?]]; repeat split; assumption.
     - destruct H0 as [? [? ?]]. split; [ | assumption ].
       split; [ assumption | ]. split; [ | assumption ].
@@ -1442,7 +1437,7 @@ prove the last case of sep_conj_perm_assoc
       * split; [ | split ]; assumption.
       * apply separate_invperm_self_conj.
       * apply separate_sep_conj_perm_l; assumption.
-      * apply sep_conj_perm_assoc_helper2; assumption.
+      * apply sep_conj_perm_assoc_nonsep_helper2; assumption.
   Qed.
 
 
@@ -1655,6 +1650,14 @@ prove the last case of sep_conj_perm_assoc
     exists x, x0. auto.
   Qed.
 
+  Global Instance Proper_eq_Perms_sep_conj_Perms :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) sep_conj_Perms.
+  Proof.
+    repeat intro. etransitivity.
+    - split; eapply sep_conj_Perms_monotone; try eapply H0; try eapply H.
+    - split; eapply sep_conj_Perms_monotone; try eapply H0; try eapply H; reflexivity.
+  Qed.
+
   Lemma sep_conj_Perms_perm: forall P Q p q,
       p ∈ P ->
       q ∈ Q ->
@@ -1681,61 +1684,46 @@ prove the last case of sep_conj_perm_assoc
   Proof.
     intros pqr H.
     destruct H as [pq [r [[p [q [? [? [? ?]]]]] [? [? ?]]]]].
-    pose proof (sep_conj_perm_monotone_l _ _ r H1).
-    rewrite (sep_conj_perm_commut _ r) in H6.
-    rewrite (sep_conj_perm_commut p) in H6.
-    rewrite (sep_conj_perm_assoc _ q) in H6.
-    rewrite (sep_conj_perm_assoc r) in H6.
-    rewrite sep_conj_l_invperm_conj in H6.
-    rewrite sep_conj_l_invperm_conj in H6.
-    rewrite (eq_invperm (inv pq)) in H6.
-    2: {
-      split; intros.
-      - split;
-          [ | rewrite sep_conj_perm_commut in H1; eapply inv_inc; eassumption ].
-        split; [ | assumption ].
-        split.
-        + split; [ assumption | ].
-          admit.
-        + admit.
-      - admit.
-    }
-    rewrite (sep_conj_perm_commut _ p) in H6.
-    rewrite (sep_conj_perm_commut r) in H6.
-    exists p. eexists.
-    split; [ assumption | ].
-    split; [ | split; [ etransitivity; eassumption | ]].
-    - eexists; exists r. split; [ | split; [ assumption | ]; split; [ reflexivity | ]].
-      + eapply Perms_upwards_closed; [ eassumption | ].
-        apply lte_r_sep_conj_perm.
-      + symmetry. apply separate_antimonotone; [ symmetry; assumption | ].
+    exists p. exists ((invperm (inv pq) ** q) ** r).
+    split; [ assumption | split; [ | split ] ].
+    - exists (invperm (inv pq) ** q). exists r.
+      split; [ | split; [ | split ] ].
+      + eapply Perms_upwards_closed; [ eassumption | apply lte_r_sep_conj_perm ]. 
+      + assumption.
+      + reflexivity.
+      + symmetry; apply separate_antimonotone; [ symmetry; assumption | ].
         etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
-    - symmetry. rewrite sep_conj_perm_commut.
-      apply separate_conj_assoc.
-      + admit.
-      + admit.
-  Admitted.
-
-  (*
-  Lemma sep_conj_Perms_assoc : forall P Q R, P * (Q * R) ≡ (P * Q) * R.
-  Proof.
-    split; repeat intro.
-    - rename p into p'. destruct H as [pq [r [? [? ?]]]].
-      destruct H as [p [q [? [? ?]]]].
-      exists p, (q ** r).
-      split; auto. split; auto. apply sep_conj_Perms_perm; auto.
-      rewrite <- sep_conj_perm_assoc.
-      etransitivity; eauto.
-      apply sep_conj_perm_monotone; intuition.
-    - rename p into p'. destruct H as [p [qr [? [? ?]]]].
-      destruct H0 as [q [r [? [? ?]]]].
-      exists (p ** q), r.
-      split; auto. apply sep_conj_Perms_perm; auto. split; auto.
-      rewrite sep_conj_perm_assoc.
-      etransitivity; eauto.
-      apply sep_conj_perm_monotone; intuition.
+    - etransitivity; [ | eassumption ].
+      etransitivity; [ | apply sep_conj_perm_monotone_l; apply H1 ].
+      etransitivity; [ apply sep_conj_perm_assoc' | ].
+      * symmetry; apply separate_antimonotone; [ symmetry; assumption | ].
+        etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+      * rewrite (sep_conj_perm_commut (invperm (inv pq)) q).
+        rewrite (sep_conj_perm_commut _ (p ** q)).
+        rewrite sep_conj_perm_assoc; [ reflexivity | assumption | ].
+        symmetry; apply separate_bigger_invperm.
+        etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+    - symmetry. rewrite sep_conj_perm_commut. apply separate_conj_assoc.
+      + rewrite <- sep_conj_perm_assoc.
+        * apply separate_antimonotone;
+            [ symmetry | rewrite sep_conj_perm_commut ]; assumption.
+        * apply separate_bigger_invperm.
+          etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+        * symmetry; assumption.
+      + apply separate_conj_assoc; [ | symmetry; assumption ].
+        rewrite sep_conj_perm_commut.
+        apply separate_bigger_invperm. assumption.
   Qed.
-*)
+
+  Lemma sep_conj_Perms_assoc P Q R : P * (Q * R) ≡ (P * Q) * R.
+  Proof.
+    split; [ apply sep_conj_Perms_assoc_lte | ].
+    rewrite (sep_conj_Perms_commut (P * Q)).
+    rewrite (sep_conj_Perms_commut P Q).
+    rewrite (sep_conj_Perms_commut P (Q * R)).
+    rewrite (sep_conj_Perms_commut Q R).
+    apply sep_conj_Perms_assoc_lte.
+  Qed.
 
   Lemma sep_conj_Perms_meet_commute : forall (Ps : Perms -> Prop) P,
       (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = P' * P /\ Ps P').
@@ -1767,13 +1755,6 @@ prove the last case of sep_conj_perm_assoc
     do 6 red. intros. rewrite H. rewrite H0. auto.
   Qed.
 
-  Global Instance Proper_eq_Perms_sep_conj_Perms :
-    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) sep_conj_Perms.
-  Proof.
-    repeat intro. etransitivity.
-    - split; eapply sep_conj_Perms_monotone; try eapply H0; try eapply H.
-    - split; eapply sep_conj_Perms_monotone; try eapply H0; try eapply H; reflexivity.
-  Qed.
 
   (** Separating implication, though we won't be using it. *)
   Definition impl_Perms P Q := meet_Perms (fun R => R * P ⊨ Q).
