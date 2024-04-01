@@ -162,6 +162,44 @@ Section bisim.
       + destruct (H3 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H4.
   Qed.
 
+  Lemma sbuter_lte_left {R1 R2} p p' Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2 :
+    pre p' (c1, c2) -> inv p' (c1, c2) ->
+    sbuter p Q t c1 s c2 -> p <= p' -> sbuter p' Q t c1 s c2.
+  Proof.
+    revert p p' Q t s c1 c2. pcofix CIH. intros p p' Q t s c1 c2 Hpre Hinv Htyping Hlte.
+    punfold Htyping. pstep.
+    revert p' Hpre Hinv Hlte; induction Htyping; intros;
+      pclearbot; try solve [econstructor; eauto].
+    - constructor; try assumption. eapply Perms_upwards_closed; eassumption.
+    - econstructor; try assumption.
+      + eapply guar_inc; eassumption.
+      + eapply sep_step_lte; eassumption.
+      + apply sbuter_gen_pre_inv in Htyping.
+        destruct Htyping; [ subst; econstructor | destruct H3 ].
+        apply IHHtyping.
+        * split; [ constructor | assumption ].
+        * split; [ | split ].
+          -- eapply (inv_guar p'0); [ | eassumption ].
+             eapply guar_inc; eassumption.
+          -- assumption.
+          -- symmetry; eapply sep_step_sep; [ eassumption | ].
+             symmetry; eapply separate_bigger_invperm. assumption.
+        * apply lte_r_sep_conj_perm.
+    - econstructor; try assumption.
+      + eapply guar_inc; eassumption.
+      + eapply sep_step_lte; eassumption.
+      + apply sbuter_gen_pre_inv in Htyping.
+        destruct Htyping; [ rewrite H3; econstructor | destruct H3 ].
+        apply IHHtyping.
+        * split; [ constructor | assumption ].
+        * split; [ | split ].
+          -- eapply (inv_guar p'0); [ | eassumption ].
+             eapply guar_inc; eassumption.
+          -- assumption.
+          -- symmetry; eapply sep_step_sep; [ eassumption | ].
+             symmetry; eapply separate_bigger_invperm. assumption.
+        * apply lte_r_sep_conj_perm.
+  Admitted.
 
   (*
   Lemma bisim_spred_lte {R1 R2} (spred spred' : config * specConfig -> Prop) p Q
@@ -352,33 +390,94 @@ Section bisim.
     eapply sbuter_bind; eauto.
   Qed.
 
+
+  Lemma sbuter_frame {R1 R2} p r Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
+    pre r (c1, c2) ->
+    inv r (c1, c2) ->
+    r ∈ R -> p ⊥ r ->
+    sbuter p Q t c1 s c2 ->
+    sbuter (p ** r) (fun r1 r2 => Q r1 r2 * R) t c1 s c2.
+  Proof.
+    revert p r Q R t s c1 c2. pcofix CIH. rename r into r0.
+    intros p r Q R t s c1 c2 Hpre Hinv Hr Hsep Hsbuter. pstep. punfold Hsbuter.
+    revert r Hr Hsep Hpre Hinv.
+    induction Hsbuter; intros; pclearbot; try solve [econstructor; eauto].
+    - constructor.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + do 2 eexists. split; [| split; [| split]]; eauto.
+      reflexivity.
+    - apply sbuter_gen_pre_inv in Hsbuter.
+      destruct Hsbuter as [? | [? ?]]; [subst; constructor |].
+      constructor.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply IHHsbuter; assumption.
+    - apply sbuter_gen_pre_inv in Hsbuter.
+      constructor.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + destruct Hsbuter; [ subst; constructor | destruct H1 ].
+        apply IHHsbuter; assumption.
+    - apply sbuter_gen_tau.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + right. apply CIH; assumption.
+    - apply sbuter_gen_pre_inv in Hsbuter.
+      destruct Hsbuter as [? | [? ?]]; [subst; constructor |].
+      eapply sbuter_gen_modify_L.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply t_step; left; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + apply IHHsbuter; try assumption.
+        * eapply sep_step_sep; eassumption.
+        * eapply pre_respects; try eassumption.
+          eapply sep_r; eassumption.
+        * eapply inv_rely; try eassumption.
+          eapply sep_r; eassumption.
+    - apply sbuter_gen_pre_inv in Hsbuter.
+      econstructor.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply t_step; left; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + destruct Hsbuter; [ rewrite H3; constructor | destruct H3 ].
+        apply IHHsbuter; try assumption.
+        * eapply sep_step_sep; eassumption.
+        * eapply pre_respects; try eassumption.
+          eapply sep_r; eassumption.
+        * eapply inv_rely; try eassumption.
+          eapply sep_r; eassumption.
+  Admitted.
+
+  (*
   Lemma sbuter_frame {R1 R2} p r p' Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
     pre p' (c1, c2) ->
     inv p' (c1, c2) ->
-    r ∈ R ->
+    r ∈ R -> p ⊥ r ->
     p ** r <= p' ->
     sbuter p Q t c1 s c2 ->
     sbuter p' (fun r1 r2 => Q r1 r2 * R) t c1 s c2.
   Proof.
     revert p r p' Q R t s c1 c2. pcofix CIH. rename r into r0.
-    intros p r p' Q R t s c1 c2 Hpre Hinv Hr Hlte Hsbuter. pstep. punfold Hsbuter.
+    intros p r p' Q R t s c1 c2 Hpre Hinv Hr Hsep Hlte Hsbuter. pstep. punfold Hsbuter.
     revert p' Hlte Hpre Hinv. generalize dependent r.
     induction Hsbuter; intros; pclearbot; try solve [econstructor; eauto].
     - constructor; auto. eapply Perms_upwards_closed; eauto.
       do 2 eexists. split; [| split; [| split]]; eauto.
-      (* apply Hlte in Hpre. apply Hpre. *)
       reflexivity.
-      eapply inv_inc in Hinv; eauto. apply Hinv.
     - apply sbuter_gen_pre_inv in Hsbuter.
       destruct Hsbuter as [? | [? ?]]; [subst; constructor |].
       constructor 6 with (p':= p' ** r ** invperm (inv  p'0)); eauto.
       + apply Hlte; auto. constructor. left. auto.
-      + (* so p'0 has a stronger inv than p and r *)
-        (* so we want this evar to be p' ** r ** invperm p'0 *)
-        admit.
-        (* eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; eauto. *)
-        (* apply Hlte in Hpre. apply Hpre. *)
-      + eapply IHHsbuter; eauto. admit. (* reflexivity. *)
+      + rewrite (sep_conj_perm_commut (p' ** r)).
+        apply (sep_step_lte _ _ _ Hlte).
+        apply sep_step_sep_conj_l; assumption.
+      + eapply IHHsbuter; eauto.
+        * eapply sep_step_sep; eassumption.
+        * apply lte_l_sep_conj_perm.
+        * 
         {
           split.
           split; auto.
@@ -451,20 +550,27 @@ Section bisim.
       eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; auto.
       apply Hlte in Hpre. apply Hpre.
   Qed.
-
+   *)
 
   Lemma typing_frame {R1 R2} P Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2):
     typing P Q t s ->
     typing (P * R) (fun r1 r2 => Q r1 r2 * R) t s.
   Proof.
     intros Ht p' c1 c2 (p & r & Hp & Hr & Hlte & Hsep) Hpre Hinv.
-    assert (Hpre': forall x, pre p' x -> pre (p ** r) x) by admit.
-    destruct Hlte as [Hinv' Hsep_step]. red in Hinv'.
-    specialize (Ht p).
-    (* pose proof Hpre as H. apply Hlte in H. destruct H as (Hprep & Hprer & Hsep'). *)
-    (* eapply sbuter_frame; eauto. *)
-  Abort.
+    eapply sbuter_lte_left; try eassumption.
+    apply sbuter_frame; try assumption.
+    - eapply pre_inc; try eassumption.
+      etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+    - eapply inv_inc; try eassumption.
+      etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+    - apply Ht; try assumption.
+      + eapply pre_inc; try eassumption.
+        etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
+      + eapply inv_inc; try eassumption.
+        etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
+  Qed.
 
+  (*
   Lemma sbuter_frame' {R1 R2} p r Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
     pre (p ** r) (c1, c2) ->
     inv (p ** r) (c1, c2) ->
@@ -508,6 +614,7 @@ Section bisim.
     intros. eapply sbuter_lte'; eauto.
     apply sbuter_frame'; eauto. admit.
   Qed.
+   *)
 
   Lemma restrict_rely C (spred spred' spred'' : C -> Prop) Hspred1 Hspred2
         (Hspred : forall x, spred' x -> spred x) r x y Hx Hy Hx' Hy' :
