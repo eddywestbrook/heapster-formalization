@@ -157,6 +157,7 @@ Section Perms.
     apply pre_inv_bottom.
   Qed.
 
+  (* when l is only applied to the ptr permission, not the internal permission *)
   Definition when_ptr_Perms {A} (l : nat) (rw : RW) (p : Value) (a : A) (T : VPermType A)
     : @Perms (Si * Ss) :=
     match p with
@@ -1602,6 +1603,7 @@ Section Perms.
 
   Check 1.
 
+  (* TODO: should work, only coinduction is not done? *)
   Lemma finished_rules {R1 R2} P (Q : R1 -> R2 -> Perms) t s l
     (HP : nonLifetime_Perms P) :
     typing (specConfig := Ss) P Q t s ->
@@ -2369,33 +2371,6 @@ Section Perms.
     coerce _ _ _ (foo front back) (lowned_Perms''' back front).
 
 
-  Lemma typing_end
-    vals l f
-    (HT: Forall (fun '(_, _, _, T) =>
-                   forall (v : Value) (a : projT1 T), nonLifetime_Perms (v :: projT2 T ▷ a))
-           vals) :
-    l :: lowned_Perms'''' vals [] ▷ f ⊢
-      endLifetime l ⤳
-      Ret tt :::
-      trueP ∅ values vals :: lfinished_Perms_T' l vals ▷ cast2 _ (f tt).
-  Proof.
-    cbn.
-    intros p si ss Hp Hpre.
-    cbn in Hp.
-    destruct Hp as (? & ((? & ? & ?) & ?)). subst.
-    rewrite app_nil_r in *.
-    rewrite cast2_foo.
-    eapply sbuter_lte.
-    2: { intros. apply (proj1 (sep_conj_Perms_bottom_identity _)). }
-    eapply sbuter_lte.
-    apply typing_end_ptr_n''. apply HT. apply H1. auto.
-    repeat intro. cbn in H.
-    destruct H as (? & ? & ? & ? & ? & ?). subst.
-    eapply Perms_upwards_closed; eauto.
-    etransitivity; eauto.
-    apply lte_l_sep_conj_perm.
-  Qed.
-
   Lemma typing_end_ptr_n'' l vals xs
     (HT: Forall (fun '(_, _, _, T) => forall (v : Value) (a : (projT1 T)), nonLifetime_Perms (v :: projT2 T ▷ a)) vals) :
     typing (specConfig := Ss)
@@ -2751,6 +2726,33 @@ Section Perms.
           rewrite <- sep_conj_perm_assoc. reflexivity.
   Qed.
 
+  Lemma typing_end
+    vals l f
+    (HT: Forall (fun '(_, _, _, T) =>
+                   forall (v : Value) (a : projT1 T), nonLifetime_Perms (v :: projT2 T ▷ a))
+           vals) :
+    l :: lowned_Perms'''' vals [] ▷ f ⊢
+      endLifetime l ⤳
+      Ret tt :::
+      trueP ∅ values vals :: lfinished_Perms_T' l vals ▷ cast2 _ (f tt).
+  Proof.
+    cbn.
+    intros p si ss Hp Hpre.
+    cbn in Hp.
+    destruct Hp as (? & ((? & ? & ?) & ?)). subst.
+    rewrite app_nil_r in *.
+    rewrite cast2_foo.
+    eapply sbuter_lte.
+    2: { intros. apply (proj1 (sep_conj_Perms_bottom_identity _)). }
+    eapply sbuter_lte.
+    apply typing_end_ptr_n''. apply HT. apply H1. auto.
+    repeat intro. cbn in H.
+    destruct H as (? & ? & ? & ? & ? & ?). subst.
+    eapply Perms_upwards_closed; eauto.
+    etransitivity; eauto.
+    apply lte_l_sep_conj_perm.
+  Qed.
+
   Lemma typing_begin' :
     lifetime_Perms ⊢
       beginLifetime ⤳
@@ -2836,7 +2838,8 @@ Section Perms.
       etransitivity.
       {
         rewrite sep_conj_Perms_commut. apply sep_conj_Perms_monotone.
-        rewrite lowned_Perms_convert. reflexivity.
+        reflexivity.
+        (* rewrite lowned_Perms_convert. reflexivity. *)
         reflexivity.
       }
       rewrite sep_conj_Perms_commut.

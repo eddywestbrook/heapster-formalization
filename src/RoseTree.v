@@ -105,7 +105,7 @@ Section RoseTree.
       simp rose_eqb in H. apply andb_prop in H. destruct H.
       eapply IHl; eauto.
     }
-    destruct l'. simp rose_eqb in H. apply EqNat.beq_nat_true in H. auto.
+    destruct l'. simp rose_eqb in H. apply Nat.eqb_eq in H. auto.
     inversion H.
   Qed.
 
