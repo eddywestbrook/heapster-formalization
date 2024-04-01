@@ -661,12 +661,12 @@ Section bisim.
 *)
 
   Global Instance Proper_eq_Perms_typing {R1 R2} :
-    Proper (eq_Perms2 ==>
-           (pointwise_relation _ (pointwise_relation _ eq_Perms2)) ==> eq ==> eq ==> flip impl) (@typing R1 R2).
+    Proper (eq_Perms ==>
+           (pointwise_relation _ (pointwise_relation _ eq_Perms)) ==> eq ==> eq ==> flip impl) (@typing R1 R2).
   Proof.
     repeat intro. subst.
-    eapply bisim_lte; eauto.
-    eapply H3. eapply eq_Perms2_eq_perm_in_Perms2; eauto. reflexivity.
-    apply H5. apply H0.
+    eapply sbuter_lte.
+    - eapply H3; try eassumption. rewrite <- H; assumption.
+    - intros; apply H0.
   Qed.
 End bisim.
