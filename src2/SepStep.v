@@ -14,9 +14,9 @@ Section step.
   (** * Preserves separability *)
   Definition inv_strengthen (p q : @perm config) : Prop :=
     forall x, inv q x -> inv p x.
-  Definition sep_step (p q : perm) : Prop :=
-    inv_strengthen p q /\
-      forall r, p ⊥ r -> q ⊥ r.
+  Record sep_step (p q : perm) : Prop :=
+    { sep_step_inv : inv_strengthen p q;
+      sep_step_sep : forall r, p ⊥ r -> q ⊥ r }.
 
   (* Definition sep_step (p q : @perm config) := *)
   (*   forall r, p ⊥ r -> q ⊥ r. *)
@@ -27,10 +27,10 @@ Section step.
     repeat intro. destruct H1.
     split; auto. repeat intro.
     erewrite (eq_perm_inv x). 2: eauto.
-    apply H1; auto.
+    apply sep_step_inv0; auto.
     erewrite (eq_perm_inv y0). 2: eauto. auto.
 
-    intros. rewrite H0. apply H2. rewrite <- H. auto.
+    intros. rewrite H0. apply sep_step_sep0. rewrite <- H. auto.
   Qed.
 
   Global Instance Proper_eq_perm_sep_step_iff :
@@ -89,8 +89,8 @@ Section step.
                                    rely p x y ->
                                    rely q x y.
   Proof.
-    intros. destruct H. specialize (H2 (sym_guar_perm p) (separate_self_sym _)).
-    apply H2; cbn; auto.
+    intros. destruct H. specialize (sep_step_sep0 (sym_guar_perm p) (separate_self_sym _)).
+    apply sep_step_sep0; cbn; auto.
   Qed.
 
   Lemma sep_step_guar : forall p q x y, sep_step p q ->
