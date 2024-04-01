@@ -63,8 +63,8 @@ Proof.
   induction n; intros.
   - destruct l; cbn; auto. apply PeanoNat.Nat.lt_0_succ.
   - destruct l; cbn; auto.
-    + apply Arith_prebase.lt_n_S_stt. specialize (IHn []). auto.
-    + apply Arith_prebase.lt_n_S_stt. auto.
+    + apply (proj1 (PeanoNat.Nat.succ_lt_mono _ _)). specialize (IHn []). auto.
+    + apply (proj1 (PeanoNat.Nat.succ_lt_mono _ _)). auto.
 Qed.
 
 Lemma nth_error_replace_list_index_neq A n n' (l : list A) (a : A) :
