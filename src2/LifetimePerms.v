@@ -12,11 +12,9 @@ From Coq Require Import
 From Heapster2 Require Import
      Utils
      Permissions
-     PermissionsSpred2
      Lifetime
      SepStep
-     Typing
-     PermType.
+     Typing.
 
 From ITree Require Import
      ITree
@@ -32,6 +30,7 @@ Section LifetimePerms.
   Context {Si Ss : Type}.
   Context `{Hlens: Lens Si Lifetimes}.
 
+  (*
   Inductive LifetimeClauses :=
   | Empty : LifetimeClauses
   | Clause : nat -> nat -> LifetimeClauses -> LifetimeClauses
@@ -43,14 +42,16 @@ Section LifetimePerms.
     | Clause n1 n2 c' => subsumes n1 n2 (lget si) (lget si) /\
                           interp_LifetimeClauses c' x
     end.
+   *)
 
   (* Some lifetime permissions only work with other permissions that do not affect lifetimes *)
-  Definition nonLifetime c (p : @perm {x : Si * Ss | interp_LifetimeClauses c x}) : Prop :=
+  Definition nonLifetime p : Prop :=
     (* rely does not tolerate lifetimes going wrong *)
     (* (forall x y, rely p x y -> Lifetimes_lte (lget (fst (proj1_sig x))) (lget (fst (proj1_sig y)))) /\ *)
       (* guar doesn't allow for lifetime changes *)
-    (forall x y, guar p x y -> lget (fst (proj1_sig x)) = lget (fst (proj1_sig y))).
+    (forall x y, inv p x -> guar p x y -> lget x = lget y).
 
+  (*
   Lemma nonLifetime_restrict c c' Hspred p :
     nonLifetime c' p ->
     nonLifetime c (restrict _ (interp_LifetimeClauses c) (interp_LifetimeClauses c') Hspred p).
@@ -59,107 +60,109 @@ Section LifetimePerms.
     cbn in *. red in H, H0. destruct x, y, x, x0.
     specialize (H _ _ H0). cbn in *. auto.
   Qed.
+   *)
 
-  Lemma nonLifetime_sep_conj c (p q : @perm {x : Si * Ss | interp_LifetimeClauses c x}) (Hp : nonLifetime c p) (Hq : nonLifetime c q) :
-    nonLifetime c (p ** q).
+  Lemma nonLifetime_invperm pred : nonLifetime (invperm pred).
   Proof.
-    repeat intro.
-    induction H.
-    - destruct H; auto.
-    - etransitivity; eauto.
+    repeat intro. inversion H0. reflexivity.
   Qed.
 
-  Lemma nonLifetime_lte c (p q : @perm {x : Si * Ss | interp_LifetimeClauses c x}) :
-    p <= q -> nonLifetime c q -> nonLifetime c p.
+  Lemma nonLifetime_sep_conj p q : nonLifetime p -> nonLifetime q ->
+                                   nonLifetime (p ** q).
   Proof.
-    repeat intro.
-    apply H0. apply H. auto.
+    repeat intro. destruct H1 as [? [? ?]].
+    induction H2.
+    - destruct H2; auto.
+    - etransitivity; [ apply IHclos_trans1; try assumption | ].
+      assert (inv (p ** q) y).
+      eapply inv_guar; [ apply H2_ | split; [ | split ]; assumption ].
+      destruct H2 as [? [? ?]]. apply IHclos_trans2; assumption.
   Qed.
 
-  Lemma nonLifetime_bottom c : nonLifetime c bottom_perm.
+  (* FIXME: this no longer holds as-is because the smaller permission could have
+     a bigger invariant
+
+  Lemma nonLifetime_lte p q : p <= q -> nonLifetime q -> nonLifetime p.
+  Proof.
+    repeat intro. apply H0.
+    - eapply inv_inc; try eassumption.
+apply H. auto.
+  Qed.
+   *)
+
+  Lemma nonLifetime_bottom : nonLifetime bottom_perm.
   Proof.
     repeat intro; cbn in *; subst; auto.
   Qed.
 
-  Section asdf.
-    Context (c : LifetimeClauses).
+  (* Note: does not have permission to start or end the lifetime [l] *)
+  Program Definition when (l : nat) (p : perm) (Hp : nonLifetime p) : perm :=
+    {|
+      pre x := pre p x \/ lifetime (lget x) l = Some finished;
 
-    (* Note: does not have permission to start or end the lifetime [l] *)
-    Program Definition when
-            (l : nat)
-            (p : @perm {x : Si * Ss | interp_LifetimeClauses c x})
-            (Hp : nonLifetime c p) : @perm {x : Si * Ss | interp_LifetimeClauses c x} :=
-      {|
-        pre x :=
-        let '(si, _) := x in
-        (lifetime (lget si) l = None \/ lifetime (lget si) l = Some current) ->
-        pre p x;
-
-        rely x y :=
-        let '(si, _) := x in
-        let '(si', _) := y in
+      rely x y :=
         (* TODO check this, can we remove? *)
-        Lifetimes_lte (lget si) (lget si') /\
-          (* if the lifetime isn't ending or already ended, the rely of p must hold *)
-          ((lifetime (lget si') l = None \/ lifetime (lget si') l = Some current) ->
-           rely p x y);
+        (* No, this is needed to make the rely transitive *)
+        Lifetimes_lte (lget x) (lget y) /\
+        (* if the lifetime isn't ending or already ended, the rely of p must hold *)
+        (rely p x y \/
+           lifetime (lget y) l = Some finished /\ inv p y);
 
-        guar x y :=
-        let '(si, _) := x in
-        let '(si', _) := y in
+      guar x y :=
         x = y \/
-          Lifetimes_lte (lget si) (lget si') /\
-            lifetime (lget si) l = Some current /\
-            lifetime (lget si') l = Some current /\
-            guar p x y;
-      |}.
-    Next Obligation.
-      constructor; repeat intro.
-      - destruct x, x. split; intuition.
-      - destruct x, y, z, x, x0, x1. cbn.
-        destruct H as (? & ?), H0 as (? & ?). split; [etransitivity; eauto |].
-        intros [].
-        + etransitivity; eauto. apply H1. left.
-          specialize (H0 l). rewrite H3 in H0.
-          destruct (lifetime (lget s1) l); auto. inversion H0.
-        + etransitivity; eauto. apply H1.
-          specialize (H0 l). specialize (H l). rewrite H3 in H0.
-          destruct (lifetime (lget s1) l); auto. destruct s5; auto. inversion H0.
-    Qed.
-    Next Obligation.
-      constructor; repeat intro.
-      - destruct x, x. cbn. auto.
-      - destruct x, y, z, x, x0, x1. cbn in *.
-        destruct H, H0; subst.
-        + left. etransitivity; eauto.
-        + decompose [and] H0. clear H0.
-          inversion H. subst.
-          right. split; [| split; [| split]]; auto.
-          etransitivity; eauto. rewrite H. reflexivity.
-        + decompose [and] H. clear H.
-          inversion H0. subst.
-          right. split; [| split; [| split]]; auto.
-          etransitivity; eauto. rewrite H0. reflexivity.
-        + decompose [and] H. clear H.
-          decompose [and] H0. clear H0.
-          right. split; [| split; [| split]]; auto.
-          etransitivity; eauto.
-          etransitivity; eauto.
-    Qed.
-    Next Obligation.
-      cbn in *. intros. destruct H.
-      destruct H3.
-      - eapply pre_respects; eauto.
-        apply H0. left. specialize (H l). rewrite H3 in H.
-        destruct (lifetime (lget s1) l); auto. inversion H.
-      - eapply pre_respects; auto.
-        apply H0. specialize (H l). rewrite H3 in H.
-        destruct (lifetime (lget s1) l); auto.
-        destruct s3; auto. inversion H.
-    Qed.
+          lifetime (lget x) l = Some current /\
+          lifetime (lget y) l = Some current /\
+          guar p x y;
 
-    (* not true since the when cannot tolerate lifetime changes in its rely *)
-    (*
+      inv x := inv p x /\ statusOf_lte (Some current) (lifetime (lget x) l)
+    |}.
+  Next Obligation.
+    constructor; repeat intro.
+    - split; [ | left ]; reflexivity.
+    - destruct H; destruct H0.
+      split; [ etransitivity; eassumption | ].
+      destruct H2; [ | right; assumption ].
+      destruct H1.
+      + left; etransitivity; eassumption.
+      + destruct H1. right. split.
+        * apply finished_lte_eq. rewrite <- H1. apply H0.
+        * eapply inv_rely; eassumption.
+  Qed.
+  Next Obligation.
+    constructor; repeat intro.
+    - left; reflexivity.
+    - destruct H; [ subst; assumption | ].
+      destruct H0; [ subst; right; assumption | ].
+      destruct H as [? [? ?]].
+      destruct H0 as [? [? ?]].
+      right; split; [ | split ]; try assumption.
+      etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    destruct H0.
+    - destruct H1; [ | destruct H1; right; assumption ].
+      left; eapply pre_respects; eassumption.
+    - right; apply finished_lte_eq; rewrite <- H0; apply H.
+  Qed.
+  Next Obligation.
+    split; [ destruct H2 | ].
+    - eapply inv_rely; eassumption.
+    - destruct H2; assumption.
+    - change (statusOf_lte (Some current) (lifetime (lget y) l)).
+      etransitivity; [ apply H1 | apply H ].
+  Qed.
+  Next Obligation.
+    destruct H; [ subst; split; try assumption; apply H0 | ].
+    destruct H as [? [? ?]].
+    split.
+    - eapply inv_guar; eassumption.
+    - change (statusOf_lte (Some current) (lifetime (lget y) l)).
+      rewrite <- H2; reflexivity.
+  Qed.
+
+
+  (* not true since the when cannot tolerate lifetime changes in its rely *)
+  (*
     Lemma when_original n p Hp :
       when n p Hp <= p.
     Proof.
@@ -171,18 +174,26 @@ Section LifetimePerms.
         + rewrite H. reflexivity.
         + decompose [and] H; auto 7.
     Qed.
-     *)
+   *)
 
-    Lemma when_monotone n p1 p2 Hp1 Hp2 : p1 <= p2 -> when n p1 Hp1 <= when n p2 Hp2.
-    Proof.
-      intros. destruct H. constructor; cbn; intros.
-      - destruct x, x. cbn in *. auto.
-      - destruct x, y, x, x0. cbn in *. destruct H; auto.
-      - destruct x, y, x, x0. cbn in *. destruct H; auto.
-        decompose [and] H; auto 7.
-    Qed.
+  Lemma when_monotone n p1 p2 Hp1 Hp2 : p1 <= p2 -> when n p1 Hp1 <= when n p2 Hp2.
+  Proof.
+    constructor; intros.
+    - destruct H1; [ | right; assumption ].
+      left. eapply pre_inc; eauto. apply H0.
+    - destruct H1 as [? [? | [? ?]]].
+      + split; [ assumption | ]. destruct H0.
+        left; apply H; assumption.
+      + split; [ assumption | ]. right; split; try assumption.
+        apply H; assumption.
+    - destruct H1 as [? | [? [? ?]]]; [ left; assumption | ].
+      right; split; [ | split ]; try assumption.
+      destruct H0. apply H; assumption.
+    - destruct H0. split; [ | assumption ].
+      apply H; assumption.
+  Qed.
 
-    Definition subsumes_all l (ls : nat -> Prop) (x : Si * Ss) : Prop :=
+  Definition subsumes_all l (ls : nat -> Prop) (x : Si * Ss) : Prop :=
       let '(si, _) := x in
       forall l', ls l' -> subsumes l l' (lget si) (lget si).
 

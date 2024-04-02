@@ -41,12 +41,30 @@ Definition statusOf_lte (s1 s2 : option status) : Prop :=
   | Some _, None => False
   | _, _ => True
   end.
+
 Global Instance statusOf_lte_preorder : PreOrder statusOf_lte.
 Proof.
   constructor; repeat intro; subst; auto.
   - destruct x; cbn; auto. reflexivity.
   - destruct x, y, z; cbn in *; intuition.
     etransitivity; eauto.
+Qed.
+
+(* Also known as antisymmetry *)
+Lemma statusOf_lte_eq s1 s2 : statusOf_lte s1 s2 -> statusOf_lte s2 s1 -> s1 = s2.
+Proof.
+  destruct s1 as [[ | ] | ]; destruct s2 as [[ | ] | ]; simpl; intros;
+    try reflexivity; elimtype False; assumption.
+Qed.
+
+Lemma finished_greatest s : statusOf_lte s (Some finished).
+Proof.
+  destruct s as [[ | ] | ]; simpl; auto.
+Qed.
+
+Lemma finished_lte_eq s : statusOf_lte (Some finished) s -> s = Some finished.
+Proof.
+  apply statusOf_lte_eq. apply finished_greatest.
 Qed.
 
 (** [s1] subsumes [s2], now with unstarted lifetimes (None) *)
