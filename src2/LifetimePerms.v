@@ -193,83 +193,78 @@ apply H. auto.
       apply H; assumption.
   Qed.
 
-  Definition subsumes_all l (ls : nat -> Prop) (x : Si * Ss) : Prop :=
-      let '(si, _) := x in
-      forall l', ls l' -> subsumes l l' (lget si) (lget si).
+  (* l subsumes all lifetimes in a set *)
+  Definition subsumes_all l (ls : nat -> Prop) x : Prop :=
+    forall l', ls l' -> subsumes l l' (lget x) (lget x).
 
-    (* Permission to end the lifetime [l], which gives us back [p].
-       Every lifetime in [ls] is subsumed by [l]. *)
-    Program Definition owned
-            (l : nat)
-            (ls : nat -> Prop)
-            (Hspred : forall x, interp_LifetimeClauses c x -> subsumes_all l ls x)
-            (p : @perm {x : Si * Ss | interp_LifetimeClauses c x} )
-            (Hp : nonLifetime c p) :
-      @perm { x : Si * Ss | interp_LifetimeClauses c x } :=
-      {|
-        (** [l] must be current *)
-        pre x :=
-        let '(si, _) := x in
-        lifetime (lget si) l = Some current;
+  (* Permission to end the lifetime [l], which gives us back [p].
+     Every lifetime in [ls] is subsumed by [l]. *)
+  Program Definition owned (l : nat) (ls : nat -> Prop) p (Hp : nonLifetime p) : perm :=
+    {|
+      (** [l] must be current *)
+      pre x := lifetime (lget x) l = Some current;
 
-        (** nobody else can change [l]. If [l] is finished, the rely of [p] holds *)
-        rely x y :=
-        let '(si, _) := x in
-        let '(si', _) := y in
-        Lifetimes_lte (lget si) (lget si') /\
-          lifetime (lget si) l = lifetime (lget si') l /\
-          (lifetime (lget si) l = Some finished -> rely p x y);
+      (** nobody else can change [l]. If [l] is finished, the rely of [p] holds *)
+      rely x y :=
+        Lifetimes_lte (lget x) (lget y) /\
+          lifetime (lget x) l = lifetime (lget y) l /\
+          (inv p x -> inv p y) /\
+          (lifetime (lget x) l = Some finished -> rely p x y);
 
-        (** If [l] is finished afterwards, the guar of [p] holds *)
-        guar x y :=
-        let '(si, _) := x in
-        let '(si', _) := y in
+      (** If [l] is finished afterwards, the guar of [p] holds *)
+      guar x y :=
         x = y \/
-          Lifetimes_lte (lget si) (lget si') /\
-            lifetime (lget si') l = Some finished /\
+          Lifetimes_lte (lget x) (lget y) /\
+            lifetime (lget y) l = Some finished /\
             guar p x y;
-      |}.
-    Next Obligation.
-      constructor; repeat intro.
-      - destruct x, x. split; intuition.
-      - destruct x, y, z, x, x0, x1. cbn in *.
-        destruct H as (? & ? & ?), H0 as (? & ? & ?).
-        split; [| split]; intros; etransitivity; eauto.
-        apply H4; auto. rewrite <- H1. auto.
-    Qed.
-    Next Obligation.
-      constructor; repeat intro.
-      - destruct x, x. cbn. auto.
-      - destruct x, y, z, x, x0, x1. cbn in *.
-        destruct H, H0; subst.
-        + left. etransitivity; eauto.
-        + decompose [and] H0. clear H0.
-          inversion H. subst.
-          right. split; [| split]; auto.
-          etransitivity; eauto. rewrite H. reflexivity.
-        + decompose [and] H. clear H.
-          inversion H0. subst.
-          right. split; [| split]; auto.
-          etransitivity; eauto. rewrite H0. reflexivity.
-        + decompose [and] H. clear H.
-          decompose [and] H0. clear H0.
-          right. split; [| split]; auto.
-          etransitivity; eauto.
-          etransitivity; eauto.
-    Qed.
-    Next Obligation.
-      cbn in *. destruct H as (? & ? & ?). rewrite <- H3. auto.
-    Qed.
 
-    Lemma owned_monotone l ls p1 p2 Hp1 Hp2 Hspred :
-      p1 <= p2 -> owned l ls Hspred p1 Hp1 <= owned l ls Hspred p2 Hp2.
-    Proof.
-      intros. destruct H. constructor; cbn; intros.
-      - destruct x, x. cbn in *. intuition.
-      - destruct x, y, x, x0. cbn in *. decompose [and] H; auto.
-      - destruct x, y, x, x0. cbn in *. destruct H; auto.
-        right. decompose [and] H; auto.
-    Qed.
+      inv x := inv p x /\ statusOf_lte (Some current) (lifetime (lget x) l)
+    |}.
+  Next Obligation.
+    constructor; repeat intro.
+    - split; [ reflexivity | ]. split; [ reflexivity | ].
+      split; [ intro; assumption | ]. intro; reflexivity.
+    - destruct H as [? [? [? ?]]]. destruct H0 as [? [? [? ?]]].
+      split; [ etransitivity; eassumption | ].
+      split; [ etransitivity; eassumption | ].
+      split; [ auto | ].
+      intro; etransitivity; [ apply H3 | apply H6 ]; try assumption.
+      apply finished_lte_eq. rewrite <- H7. apply H.
+  Qed.
+  Next Obligation.
+    constructor; repeat intro.
+    - left; reflexivity.
+    - destruct H; [ subst; assumption | ].
+      destruct H0; [ subst; right; assumption | ].
+      destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
+      right. split; [ etransitivity; eassumption | ].
+      split; [ assumption | ].
+      etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    destruct H; [ subst; split; assumption | ].
+    destruct H as [? [? ?]].
+    split.
+    - eapply inv_guar; eassumption.
+    - rewrite H2. trivial.
+  Qed.
+
+
+  Lemma owned_monotone l ls p1 p2 Hp1 Hp2 :
+    p1 <= p2 -> owned l ls p1 Hp1 <= owned l ls p2 Hp2.
+  Proof.
+    constructor; intros.
+    - apply H1.
+    - destruct H1 as [? [? [? ?]]]. destruct H0.
+      split; [ assumption | ]. split; [ assumption | ]. split; intros.
+      + apply H. auto.
+      + apply H; [ assumption | ]. apply H4; assumption.
+    - destruct H1; [ subst; reflexivity | ].
+      destruct H1 as [? [? ?]]. right.
+      split; [ assumption | ]. split; [ assumption | ].
+      destruct H0. apply H; assumption.
+    - destruct H0. split; [ apply H | ]; assumption.
+  Qed.
 
     Lemma lifetimes_sep l ls Hls
           p q Hp Hq  :
