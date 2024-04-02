@@ -449,7 +449,46 @@ Section bisim.
           eapply sep_r; eassumption.
         * eapply inv_rely; try eassumption.
           eapply sep_r; eassumption.
-  Admitted.
+    - econstructor 8.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply t_step; left; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + right. apply CIH.
+        5: apply H3.
+        4: {
+          apply H2. apply Hsep.
+        }
+        * respects. apply Hsep; auto.
+        * apply Hsep in H1; auto. eapply inv_rely; eauto.
+        * auto.
+    - econstructor 9.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + intros. eapply H3; auto. apply H1; auto.
+    - econstructor 10.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + intros. eapply H3; auto. apply H1; auto.
+    - econstructor 11; eauto.
+      split; assumption.
+      split; [ | split]; assumption.
+      2: { intros. specialize (H2 b1). destruct H2 as (b2 & H2). pclearbot. exists b2.
+           pose proof H2 as Hsbuter.
+           punfold Hsbuter. apply sbuter_gen_pre_inv in Hsbuter.
+           destruct Hsbuter; [rewrite H4; left; pstep; constructor |].
+           right. eapply CIH. 5: apply H2. all: eauto. apply H1; auto.
+      }
+      2: { intros. specialize (H3 b2). destruct H3 as (b1 & H3). pclearbot. exists b1.
+           pose proof H3 as Hsbuter.
+           punfold Hsbuter. apply sbuter_gen_pre_inv in Hsbuter.
+           destruct Hsbuter; [rewrite H4; left; pstep; constructor |].
+           right. eapply CIH. 5: apply H3. all: eauto. apply H1; auto.
+      }
+      apply sep_step_sep_conj_l; auto.
+  Qed.
 
   (*
   Lemma sbuter_frame {R1 R2} p r p' Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
@@ -477,7 +516,7 @@ Section bisim.
       + eapply IHHsbuter; eauto.
         * eapply sep_step_sep; eassumption.
         * apply lte_l_sep_conj_perm.
-        * 
+        *
         {
           split.
           split; auto.

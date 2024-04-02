@@ -14,7 +14,7 @@ From ExtLib Require Import
 From Heapster2 Require Import
      Utils
      Permissions
-     PermissionsSpred2
+     (* PermissionsSpred2 *)
      Memory
      SepStep
      Typing.
