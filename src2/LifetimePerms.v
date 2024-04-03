@@ -119,14 +119,12 @@ apply H. auto.
   Admitted.
 
   (* Note: does not have permission to start or end the lifetime [l] *)
-  Program Definition when (l : nat) (p : perm) (Hp : nonLifetime p) : perm :=
+  Program Definition when (l : nat) (p : perm) : perm :=
     {|
       pre x := pre p x \/ lifetime (lget x) l = Some finished;
 
       rely x y :=
-        (* TODO check this, can we remove? *)
-        (* No, this is needed to make the rely transitive *)
-        Lifetimes_lte (lget x) (lget y) /\
+        statusOf_lte (lifetime (lget x) l) (lifetime (lget y) l) /\
         (* if the lifetime isn't ending or already ended, the rely of p must hold *)
         (rely p x y \/
            lifetime (lget y) l = Some finished /\ inv p y);
@@ -199,7 +197,7 @@ apply H. auto.
     Qed.
    *)
 
-  Lemma when_monotone n p1 p2 Hp1 Hp2 : p1 <= p2 -> when n p1 Hp1 <= when n p2 Hp2.
+  Lemma when_monotone n p1 p2 : p1 <= p2 -> when n p1 <= when n p2.
   Proof.
     constructor; intros.
     - destruct H1; [ | right; assumption ].
@@ -222,15 +220,14 @@ apply H. auto.
 
   (* Permission to end the lifetime [l], which gives us back [p].
      Every lifetime in [ls] is subsumed by [l]. *)
-  Program Definition owned (l : nat) (ls : nat -> Prop) p (Hp : nonLifetime p) : perm :=
+  Program Definition owned (l : nat) (ls : nat -> Prop) p : perm :=
     {|
       (** [l] must be current *)
       pre x := lifetime (lget x) l = Some current;
 
       (** nobody else can change [l]. If [l] is finished, the rely of [p] holds *)
       rely x y :=
-        Lifetimes_lte (lget x) (lget y) /\
-          lifetime (lget x) l = lifetime (lget y) l /\
+        lifetime (lget x) l = lifetime (lget y) l /\
           (inv p x -> inv p y) /\
           (lifetime (lget x) l = Some finished -> rely p x y);
 
@@ -247,14 +244,13 @@ apply H. auto.
     |}.
   Next Obligation.
     constructor; repeat intro.
-    - split; [ reflexivity | ]. split; [ reflexivity | ].
+    - split; [ reflexivity | ].
       split; [ intro; assumption | ]. intro; reflexivity.
-    - destruct H as [? [? [? ?]]]. destruct H0 as [? [? [? ?]]].
-      split; [ etransitivity; eassumption | ].
+    - destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
       split; [ etransitivity; eassumption | ].
       split; [ auto | ].
-      intro; etransitivity; [ apply H3 | apply H6 ]; try assumption.
-      apply finished_lte_eq. rewrite <- H7. apply H.
+      intro; etransitivity; [ apply H2 | apply H4 ]; try assumption.
+      rewrite <- H; assumption.
   Qed.
   Next Obligation.
     constructor; repeat intro.
@@ -274,8 +270,10 @@ apply H. auto.
                _ (@lget Si (list status) Hlens y) _ _ H2) in H3.
     rewrite lPutGet in H3.
     eapply inv_guar; try eassumption.
-    apply nonLT_inv; assumption.
-  Qed.
+    (* apply nonLT_inv; assumption.
+  Qed. *)
+  Admitted.
+
 
   Lemma owned_monotone l ls p1 p2 Hp1 Hp2 :
     p1 <= p2 -> owned l ls p1 Hp1 <= owned l ls p2 Hp2.
@@ -293,6 +291,7 @@ apply H. auto.
       apply nonLT_inv; assumption.
     - destruct H0. split; [ apply H | ]; assumption.
   Qed.
+
 
 
   Lemma when_owned_sep l ls p q Hp Hq :
