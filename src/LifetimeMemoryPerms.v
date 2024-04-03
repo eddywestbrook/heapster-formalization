@@ -1601,10 +1601,111 @@ Section Perms.
   Abort.
 *)
 
-  Check 1.
+  Lemma sbuter_finished {R1 R2} p p' (Q : R1 -> R2 -> Perms) t s l c1 c2
+    (Hnlp : nonLifetime p) :
+    sbuter p Q t c1 s c2 ->
+    lfinished l p <= p' ->
+    pre p' (c1, c2) ->
+    sbuter p' (fun r1 r2 => lfinished_Perms (Ss := Ss) l (Q r1 r2)) t c1 s c2.
+  Proof.
+    revert p p' Q t s c1 c2 Hnlp. pcofix CIH.
+    intros p p' Q t s c1 c2 Hnlp Ht Hlte Hpre.
+    pstep. punfold Ht.
 
-  (* TODO: should work, only coinduction is not done? *)
-  Lemma finished_rules {R1 R2} P (Q : R1 -> R2 -> Perms) t s l
+    revert p' Hlte Hpre.
+    induction Ht; intros; auto.
+    - constructor 1; auto.
+      eexists. split; eauto.
+    - constructor 2.
+    - constructor 3; eauto.
+    - constructor 4; eauto.
+    - constructor 5; auto. pclearbot. right. eapply CIH; eauto.
+    - apply sbuter_gen_pre in Ht. destruct Ht.
+      { rewrite H2. constructor 2. }
+      econstructor 6; auto.
+      + apply Hlte. cbn. right. split; [| split]; auto.
+        * eapply nonLifetime_guar in H0; auto.
+        * apply Hlte in Hpre. cbn in Hpre.
+          symmetry. apply Hpre.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+      + eapply IHHt; auto.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. destruct Hpre as (Hfin & Hpre).
+          cbn. split; auto. apply nonLifetime_guar in H0; auto.
+          cbn in H0. rewrite <- H0; auto.
+    - econstructor 7; auto.
+      + apply Hlte. right. split; [| split]; auto.
+        apply Hlte in Hpre. cbn in Hpre.
+        symmetry. apply Hpre.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+      + apply sbuter_gen_pre in Ht. destruct Ht; [rewrite H2; constructor |].
+        eapply IHHt; auto.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. destruct Hpre as (Hfin & Hpre).
+          cbn. split; auto.
+    - econstructor 8; eauto.
+      3: {
+        pclearbot. pose proof H2 as Hsbuter.
+        punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
+        destruct Hsbuter.
+        { left. rewrite H3. pstep. constructor. }
+        right. eapply CIH; auto.
+        - eapply nonLifetime_sep_step; eauto.
+        - apply H2.
+        - reflexivity.
+        - split; auto.
+          eapply nonLifetime_guar in H0; auto. cbn in H0. rewrite <- H0.
+          apply Hlte in Hpre. apply Hpre.
+      }
+      + apply Hlte. cbn. right. split; [| split]; auto.
+        * eapply nonLifetime_guar in H0; auto.
+        * apply Hlte in Hpre. symmetry. apply Hpre.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+    - econstructor; eauto.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+      + intros. specialize (H1 b).
+        apply sbuter_gen_pre in H1. destruct H1; [rewrite H1; constructor 2 |].
+        apply H2; auto.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. split; auto. apply Hpre.
+    - econstructor; auto.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+      + intros. specialize (H1 b).
+        apply sbuter_gen_pre in H1. destruct H1; [rewrite H1; constructor 2 |].
+        apply H2; auto.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. split; auto. apply Hpre.
+    - econstructor 11; eauto.
+      + eapply sep_step_lte; eauto.
+        apply lfinished_sep_step; eauto.
+      + intros. specialize (H1 b1). destruct H1 as (b2 & H1). pclearbot. exists b2.
+        pose proof H1 as Hsbuter.
+        punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
+        destruct Hsbuter; [rewrite H3; left; pstep; constructor |].
+        right. eapply CIH. 2: apply H1.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. split; auto. apply Hpre.
+      + intros. specialize (H2 b2). destruct H2 as (b1 & H2). pclearbot. exists b1.
+        pose proof H2 as Hsbuter.
+        punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
+        destruct Hsbuter; [rewrite H3; left; pstep; constructor |].
+        right. eapply CIH. 2: apply H2.
+        * eapply nonLifetime_sep_step; eauto.
+        * reflexivity.
+        * apply Hlte in Hpre. split; auto. apply Hpre.
+  Qed.
+
+  Lemma typing_finished {R1 R2} P (Q : R1 -> R2 -> Perms) t s l
     (HP : nonLifetime_Perms P) :
     typing (specConfig := Ss) P Q t s ->
     typing (lfinished_Perms l P) (fun r1 r2 => lfinished_Perms l (Q r1 r2)) t s.
@@ -1612,82 +1713,15 @@ Section Perms.
     intros Ht p0 si ss (? & (p' & Hp' & ?) & Hp0) Hpre'; subst.
     destruct (HP _ Hp') as (p & Hp & Hlte & Hnlp & Hrest).
     pose proof Hpre' as H.
+    cbn in Hp0.
     apply Hp0 in H. destruct H as (Hfin & Hpre).
     apply Hlte in Hpre.
-    specialize (Ht _ _ _ Hp Hpre).
-    pstep. punfold Ht. 2: admit.
-    cbn in Hp0.
-    (* clear Hlte Hp' p' Hp0. *)
-    clear Hp Hp'.
-    revert p0 Hp0 Hpre'. (* p' Hp' Hp0 Hlte. *)
-    revert p' Hlte.
-    (* clear Hp Hp Hrest Hpre. *)
-    clear Hrest Hpre.
-    induction Ht; intros; auto.
-    - constructor 1; auto.
-      eexists. split; eauto.
-      cbn. etransitivity. 2: apply Hp0. apply lfinished_monotone. auto.
-    - constructor 2.
-    - constructor 3; eauto.
-    - constructor 4; eauto.
-    - admit.
-    - apply sbuter_gen_pre in Ht. destruct Ht.
-      { rewrite H2. constructor 2. }
-      econstructor 6; auto.
-      + apply Hp0. cbn. right. split; [| split]; auto.
-        eapply nonLifetime_guar in H0; auto.
-        apply Hlte; auto.
-      + cbn in Hp0. eapply sep_step_lte; eauto.
-        apply lfinished_sep_step.
-        eapply sep_step_lte; eauto.
-      + eapply IHHt; auto.
-        * eapply nonLifetime_sep_step; eauto.
-        * eapply nonLifetime_guar in H0; auto.
-          cbn in H0. rewrite <- H0. auto.
-        * reflexivity.
-        * reflexivity.
-        * cbn. split; auto. apply nonLifetime_guar in H0; auto.
-          cbn in H0. rewrite <- H0; auto.
-    - econstructor 7; auto.
-      + apply Hp0. cbn. right. split; [| split]; auto.
-        apply Hlte; auto.
-      + cbn in Hp0. eapply sep_step_lte; eauto.
-        apply lfinished_sep_step.
-        eapply sep_step_lte; eauto.
-      + apply sbuter_gen_pre in Ht. destruct Ht.
-        { rewrite H2. constructor 2. }
-        eapply IHHt; auto.
-        * eapply nonLifetime_sep_step; eauto.
-        * reflexivity.
-        * reflexivity.
-        * split; auto.
-    - admit.
-    - specialize (H1 true).
-      apply sbuter_gen_pre in H1. destruct H1.
-      { rewrite H1. constructor 2. }
-      econstructor 9; auto.
-      + cbn in Hp0. eapply sep_step_lte; eauto.
-        apply lfinished_sep_step.
-        eapply sep_step_lte; eauto.
-      + intros b. eapply H2; auto.
-        * eapply nonLifetime_sep_step; eauto.
-        * reflexivity.
-        * reflexivity.
-        * split; auto.
-    - econstructor 10; auto.
-      + cbn in Hp0. eapply sep_step_lte; eauto.
-        apply lfinished_sep_step.
-        eapply sep_step_lte; eauto.
-      + intros b. specialize (H1 b). apply sbuter_gen_pre in H1.
-        destruct H1.
-        { rewrite H1. constructor 2. }
-        eapply H2; auto.
-        * eapply nonLifetime_sep_step; eauto.
-        * reflexivity.
-        * reflexivity.
-        * split; auto.
-    - admit.
-  Abort.
+
+    eapply sbuter_finished; auto.
+    apply Hnlp.
+    apply Ht; auto.
+    etransitivity; eauto. apply lfinished_monotone; auto.
+  Qed.
 
   (* Fixpoint when_ptrs_T' l (vals : list (nat * {A & (VPermType (Si := Si) A)})) : *)
   (*   @PermType Si Ss _ _ := *)
@@ -2737,7 +2771,7 @@ Section Perms.
       trueP ∅ values vals :: lfinished_Perms_T' l vals ▷ cast2 _ (f tt).
   Proof.
     cbn.
-    intros p si ss Hp Hpre.
+    intros p si ss Hp Hpre. cbn in *.
     cbn in Hp.
     destruct Hp as (? & ((? & ? & ?) & ?)). subst.
     rewrite app_nil_r in *.

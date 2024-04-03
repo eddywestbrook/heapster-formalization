@@ -346,7 +346,7 @@ Section bisim.
   Proof.
     revert p r p' Q R t s c1 c2. pcofix CIH. rename r into r0.
     intros p r p' Q R t s c1 c2 Hpre Hr Hlte Hsbuter. pstep. punfold Hsbuter.
-    revert p' Hlte Hpre. generalize dependent r.
+    revert r p' Hr Hlte Hpre.
     induction Hsbuter; intros; pclearbot; try solve [econstructor; eauto].
     - constructor; auto. eapply Perms_upwards_closed; eauto.
       do 2 eexists. split; [| split; [| split]]; eauto.
@@ -580,3 +580,5 @@ Section bisim.
     intros. rewrite H0. reflexivity.
   Qed.
 End bisim.
+
+#[global] Hint Resolve sbuter_gen_mon : paco.
