@@ -45,11 +45,20 @@ Section LifetimePerms.
    *)
 
   (* Some lifetime permissions only work with other permissions that do not affect lifetimes *)
+  Record nonLifetime p : Prop :=
+    {
+      nonLT_inv : forall x lts, inv p x -> inv p (lput x lts);
+      nonLT_guar : forall x y lts, inv p x -> guar p x y -> guar p (lput x lts) (lput y lts);
+      nonLT_guar_eq : forall x y, inv p x -> guar p x y -> lget x = lget y;
+    }.
+
+  (*
   Definition nonLifetime p : Prop :=
     (* rely does not tolerate lifetimes going wrong *)
     (* (forall x y, rely p x y -> Lifetimes_lte (lget (fst (proj1_sig x))) (lget (fst (proj1_sig y)))) /\ *)
       (* guar doesn't allow for lifetime changes *)
     (forall x y, inv p x -> guar p x y -> lget x = lget y).
+   *)
 
   (*
   Lemma nonLifetime_restrict c c' Hspred p :
@@ -62,21 +71,36 @@ Section LifetimePerms.
   Qed.
    *)
 
-  Lemma nonLifetime_invperm pred : nonLifetime (invperm pred).
+  Definition nonLifetime_pred (pred : Si -> Prop) : Prop :=
+    forall x lts, pred x -> pred (lput x lts).
+
+  Lemma nonLifetime_invperm pred : nonLifetime_pred pred -> nonLifetime (invperm pred).
   Proof.
-    repeat intro. inversion H0. reflexivity.
+    split; repeat intro.
+    - apply H. assumption.
+    - inversion H1; reflexivity.
+    - inversion H1; reflexivity.
   Qed.
+
 
   Lemma nonLifetime_sep_conj p q : nonLifetime p -> nonLifetime q ->
                                    nonLifetime (p ** q).
   Proof.
-    repeat intro. destruct H1 as [? [? ?]].
-    induction H2.
-    - destruct H2; auto.
-    - etransitivity; [ apply IHclos_trans1; try assumption | ].
-      assert (inv (p ** q) y).
-      eapply inv_guar; [ apply H2_ | split; [ | split ]; assumption ].
-      destruct H2 as [? [? ?]]. apply IHclos_trans2; assumption.
+    constructor; intros.
+    - destruct H1 as [? [? ?]].
+      split; [ | split ]; try assumption; eapply nonLT_inv; eassumption.
+    - induction H2.
+      + destruct H1 as [? [? ?]].
+        destruct H2; apply t_step; [ left | right ]; eapply nonLT_guar; eassumption.
+      + etransitivity; [ apply IHclos_trans1; assumption | ].
+        apply IHclos_trans2.
+        eapply inv_guar; eassumption.
+    - induction H2.
+      + destruct H1 as [? [? ?]].
+        destruct H2;
+          [ eapply (nonLT_guar_eq _ H) | eapply (nonLT_guar_eq _ H0) ]; eassumption.
+      + etransitivity; [ apply IHclos_trans1; assumption | ].
+        apply IHclos_trans2. eapply inv_guar; eassumption.
   Qed.
 
   (* FIXME: this no longer holds as-is because the smaller permission could have
@@ -92,8 +116,7 @@ apply H. auto.
 
   Lemma nonLifetime_bottom : nonLifetime bottom_perm.
   Proof.
-    repeat intro; cbn in *; subst; auto.
-  Qed.
+  Admitted.
 
   (* Note: does not have permission to start or end the lifetime [l] *)
   Program Definition when (l : nat) (p : perm) (Hp : nonLifetime p) : perm :=
@@ -216,7 +239,9 @@ apply H. auto.
         x = y \/
           Lifetimes_lte (lget x) (lget y) /\
             lifetime (lget y) l = Some finished /\
-            guar p x y;
+            guar p
+              (lput x (replace_list_index (lget x) l finished))
+              (lput y (replace_list_index (lget y) l finished));
 
       inv x := inv p x /\ statusOf_lte (Some current) (lifetime (lget x) l)
     |}.
@@ -244,11 +269,13 @@ apply H. auto.
   Next Obligation.
     destruct H; [ subst; split; assumption | ].
     destruct H as [? [? ?]].
-    split.
-    - eapply inv_guar; eassumption.
-    - rewrite H2. trivial.
+    split; [ | rewrite H2; trivial ].
+    rewrite (replace_list_index_eq
+               _ (@lget Si (list status) Hlens y) _ _ H2) in H3.
+    rewrite lPutGet in H3.
+    eapply inv_guar; try eassumption.
+    apply nonLT_inv; assumption.
   Qed.
-
 
   Lemma owned_monotone l ls p1 p2 Hp1 Hp2 :
     p1 <= p2 -> owned l ls p1 Hp1 <= owned l ls p2 Hp2.
@@ -262,35 +289,43 @@ apply H. auto.
     - destruct H1; [ subst; reflexivity | ].
       destruct H1 as [? [? ?]]. right.
       split; [ assumption | ]. split; [ assumption | ].
-      destruct H0. apply H; assumption.
+      destruct H0. apply H; try assumption.
+      apply nonLT_inv; assumption.
     - destruct H0. split; [ apply H | ]; assumption.
   Qed.
 
-    Lemma lifetimes_sep l ls Hls
-          p q Hp Hq  :
-      when l p Hp ⊥ owned l ls Hls q Hq.
-    Proof.
-      split; intros.
-      - destruct x, y, x, x0. cbn in *. destruct H.
-        + inversion H. subst. split; try reflexivity.
-          intros. rewrite H. reflexivity.
-        + destruct H as (? & ? & ?). split; auto. intros.
-          destruct H2; rewrite H2 in H0; inversion H0.
-      - destruct x, y, x, x0. cbn in *. destruct H.
-        + inversion H. subst. split; [| split]; try reflexivity.
-          intros. rewrite H. reflexivity.
-        + destruct H as (? & ? & ? & ?). split; [| split]; auto.
-          rewrite H0, H1; auto.
-          intros. rewrite H0 in H3. inversion H3.
-    Qed.
 
-    Lemma lifetimes_sep' l ls Hls
-          (p : perm) q Hp Hq  :
-      p ⊥ owned l ls Hls q Hq ->
-      when l p Hp ⊥ owned l ls Hls (p ** q) (nonLifetime_sep_conj c _ _ Hp Hq).
+  Lemma when_owned_sep l ls p q Hp Hq :
+    p ⊥ invperm (inv q) -> q ⊥ invperm (inv p) -> when l p Hp ⊥ owned l ls q Hq.
+  Proof.
+    split; intros.
+    - destruct H1. destruct H2.
+      destruct H3 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+      split; [ assumption | ].
+      right; split; [ assumption | ].
+      eapply (inv_rely (invperm (inv p))); [ | eassumption ].
+      eapply sep_r; eassumption.
+    - destruct H1. destruct H2.
+      destruct H3 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+      assert (lget x = lget y); [ apply Hp; assumption | ].
+      simpl; rewrite H8.
+      split; [ reflexivity | ]. split; [ reflexivity | ].
+      split; intros.
+      + eapply (inv_rely (invperm (inv q))); [ | eassumption ].
+        eapply sep_r; eassumption.
+      + rewrite H6 in H9. inversion H9.
+  Qed.
+
+    Lemma lifetime_split_sep l ls p q Hp Hq  :
+      p ⊥ owned l ls q Hq ->
+      when l p Hp ⊥ owned l ls (p ** q) (nonLifetime_sep_conj _ _ Hp Hq).
     Proof.
-      intros.
-      eapply lifetimes_sep.
+      intros. eapply when_owned_sep.
+      - symmetry; apply separate_bigger_invperm. apply lte_l_sep_conj_perm.
+      - apply separate_invperm; intros.
+        
+
+apply separate_bigger_invperm.
     Qed.
     (*   split; intros. *)
     (*   - destruct x, y, x, x0. cbn in *. destruct H0. *)
