@@ -101,6 +101,16 @@ Proof.
     + simpl in Hl. apply PeanoNat.Nat.succ_lt_mono in Hl. apply IHn; auto.
 Qed.
 
+Lemma replace_list_index_idem {A} l n new :
+  @replace_list_index A (replace_list_index l n new) n new =
+    replace_list_index l n new.
+Proof.
+  revert n; induction l; intros; [ induction n | destruct n ]; simpl; try reflexivity.
+  - simpl in IHn. rewrite IHn; reflexivity.
+  - simpl in IHl. rewrite (IHl n). reflexivity.
+Qed.
+
+
 (** * itree stuff *)
 
 Variant modifyE C : Type -> Type :=
