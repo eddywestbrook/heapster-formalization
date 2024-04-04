@@ -107,6 +107,17 @@ Proof.
   - specialize (H l). specialize (H0 l). etransitivity; eauto.
 Qed.
 
+Lemma Lifetimes_lte_update ls l new :
+  l < length ls -> statusOf_lte (lifetime ls l) (Some new) ->
+  Lifetimes_lte ls (replace_list_index ls l new).
+Proof.
+  repeat intro. unfold lifetime. destruct (Nat.eq_dec l0 l).
+  - subst. rewrite nth_error_replace_list_index_eq. assumption.
+  - rewrite <- nth_error_replace_list_index_neq; try assumption.
+    reflexivity.
+Qed.
+
+
 Lemma subsumes_1_none_inv : forall s n1 n2,
     lifetime s n1 = None ->
     subsumes n1 n2 s s ->
