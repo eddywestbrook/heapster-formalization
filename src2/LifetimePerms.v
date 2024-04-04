@@ -27,8 +27,8 @@ Import ListNotations.
 (* end hide *)
 
 Section LifetimePerms.
-  Context {Si Ss : Type}.
-  Context `{Hlens: Lens Si Lifetimes}.
+  Context {S : Type}.
+  Context `{Hlens: Lens S Lifetimes}.
 
   (*
   Inductive LifetimeClauses :=
@@ -71,7 +71,7 @@ Section LifetimePerms.
   Qed.
    *)
 
-  Definition nonLifetime_pred (pred : Si -> Prop) : Prop :=
+  Definition nonLifetime_pred (pred : S -> Prop) : Prop :=
     forall x lts, pred x -> pred (lput x lts).
 
   Lemma nonLifetime_invperm pred : nonLifetime_pred pred -> nonLifetime (invperm pred).
@@ -117,6 +117,104 @@ apply H. auto.
   Lemma nonLifetime_bottom : nonLifetime bottom_perm.
   Proof.
   Admitted.
+
+
+  (* Permission to allocate lifetimes with index >= n; also requires any other
+  permissions (via its rely) to respect the lifetime evolution order *)
+  Program Definition lifetime_perm (n : nat) : perm :=
+    {|
+      pre x := length (lget x) = n;
+
+      rely x y :=
+        Lifetimes_lte (lget x) (lget y) /\
+          length (lget x) = length (lget y) /\
+          (forall n', n' >= n -> lifetime (lget x) n' = lifetime (lget y) n');
+
+      guar x y :=
+        (exists (ls : Lifetimes), y = lput x ls) /\
+          (forall l, l < n -> lifetime (lget x) l = lifetime (lget y) l) /\
+          Lifetimes_lte (lget x) (lget y);
+
+      inv x := True;
+    |}.
+  Next Obligation.
+    constructor; repeat intro.
+    - split; [ | split ]; reflexivity.
+    - destruct H as [? [? ?]]; destruct H0 as [? [? ?]].
+      split; [ etransitivity; eassumption | ].
+      split; [ etransitivity; eassumption | ]; intros.
+      etransitivity; [ apply H2 | apply H4 ]; assumption.
+  Qed.
+  Next Obligation.
+    constructor; repeat intro.
+    - split; [ exists (lget x); symmetry; apply lPutGet | ].
+      split; reflexivity.
+    - destruct H as [[lts_x ?] [? ?]]. destruct H0 as [[lts_y ?] [? ?]]. subst.
+      repeat rewrite lPutPut in * |- *. repeat rewrite lGetPut in * |- *.
+      rewrite lGetPut in H4. rewrite lGetPut in H3.
+      split; [ eexists; reflexivity | ].
+      split; [ | etransitivity; eassumption ].
+      intros; etransitivity; [ apply H1 | apply H3 ]; assumption.
+  Qed.
+
+
+  (* l subsumes all lifetimes in a set *)
+  Definition subsumes_all l (ls : nat -> Prop) x : Prop :=
+    forall l', ls l' -> subsumes l l' (lget x) (lget x).
+
+  Program Definition owned_basic (l : nat) (ls : nat -> Prop) : perm :=
+    {|
+      (** [l] must be current *)
+      pre x := lifetime (lget x) l = Some current;
+
+      rely x y := lifetime (lget x) l = lifetime (lget y) l;
+
+      guar x y :=
+        x = y \/ y = (lput x (replace_list_index (lget x) l finished));
+
+      inv x := statusOf_lte (Some current) (lifetime (lget x) l)
+    |}.
+  Next Obligation.
+    constructor; intros.
+    - intro; reflexivity.
+    - intros x y z Hzy Hyz. etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    constructor; repeat intro.
+    - left; reflexivity.
+    - destruct H; [ subst; assumption | ].
+      destruct H0; [ subst; right; reflexivity | ].
+      right; subst. rewrite lGetPut.
+      rewrite lPutPut. rewrite replace_list_index_idem.
+      reflexivity.
+  Qed.
+  Next Obligation.
+    change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    destruct H; [ subst; try assumption | ].
+    etransitivity; [ eassumption | ]. subst. rewrite lGetPut.
+    unfold lifetime. rewrite nth_error_replace_list_index_eq.
+    apply finished_greatest.
+  Qed.
+
+
+  Lemma separate_owned_lifetime_perm l ls n :
+    l < n -> owned_basic l ls ⊥ lifetime_perm n.
+  Proof.
+    constructor; intros.
+    - destruct H2 as [? [? ?]]. apply H3; assumption.
+    - destruct H2; subst; [ reflexivity | ].
+      assert (l < length (lget x)); [ | split; [ | split ]].
+      + simpl in H0. unfold lifetime, Lifetimes in H0.
+        apply nth_error_Some; intro. rewrite H2 in H0. assumption.
+      + rewrite lGetPut.
+        apply Lifetimes_lte_update; [ assumption | apply finished_greatest ].
+      + rewrite lGetPut. apply replace_list_index_length; assumption.
+      + intros. rewrite lGetPut. unfold lifetime.
+        apply nth_error_replace_list_index_neq; [ assumption | ].
+        intro. subst. apply (Lt.lt_not_le l n); assumption.
+  Qed.
+
+
 
   (* Note: does not have permission to start or end the lifetime [l] *)
   Program Definition when (l : nat) (p : perm) : perm :=
@@ -181,7 +279,6 @@ apply H. auto.
       rewrite <- H2; reflexivity.
   Qed.
 
-
   (* not true since the when cannot tolerate lifetime changes in its rely *)
   (*
     Lemma when_original n p Hp :
@@ -214,9 +311,77 @@ apply H. auto.
       apply H; assumption.
   Qed.
 
-  (* l subsumes all lifetimes in a set *)
-  Definition subsumes_all l (ls : nat -> Prop) x : Prop :=
-    forall l', ls l' -> subsumes l l' (lget x) (lget x).
+
+  Program Definition after l p : perm :=
+    {|
+      (** [l] must be current *)
+      pre x := lifetime (lget x) l = Some finished -> pre p x;
+
+      rely x y :=
+        statusOf_lte (lifetime (lget x) l) (lifetime (lget y) l) /\
+          (inv p x -> inv p y) /\
+          ((lifetime (lget x) l = Some finished -> pre p x) ->
+           lifetime (lget y) l = Some finished -> pre p y) /\
+          (lifetime (lget x) l = Some finished -> rely p x y);
+
+      (** If [l] is finished afterwards, the guar of [p] holds *)
+      guar x y :=
+        x = y \/
+          lifetime (lget x) l = Some finished /\
+            lifetime (lget y) l = Some finished /\
+            guar p x y;
+
+      inv x := inv p x /\ statusOf_lte (Some current) (lifetime (lget x) l)
+    |}.
+  Next Obligation.
+    constructor; intros.
+    - split; [ reflexivity | ]. split; [ intro; assumption | ].
+      split; [ intros; auto | ]. intro; reflexivity.
+    - intros x y z [? [? [? ?]]] [? [? [? ?]]].
+      split; [ etransitivity; eassumption | ].
+      split; [ auto | ].
+      split; [ auto | ].
+      intro; etransitivity; auto.
+      apply H6. apply finished_lte_eq. rewrite <- H7. assumption.
+  Qed.
+  Next Obligation.
+    constructor; intros.
+    - left; reflexivity.
+    - intros x y z Hxy Hyz.
+      destruct Hxy; [ subst; assumption | ].
+      destruct Hyz as [? | [? [? ?]]]; [ subst; right; assumption | ].
+      destruct H as [? [? ?]]. right.
+      split; [ assumption | ]. split; [ assumption | ]. etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    split; [ auto | ].
+    change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    destruct H; [ subst; split; assumption | ]. destruct H as [? [? ?]].
+    split; [ eapply inv_guar; eassumption | ].
+    change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    rewrite H2; simpl; trivial.
+  Qed.
+
+
+  Lemma perm_split_lt p l n :
+    (when l p ** after l p) ** lifetime_perm n <= p ** lifetime_perm n.
+  Proof.
+    constructor; intros.
+    - destruct H0.
+      split; [ split | ]; [ left | intro | ]; assumption.
+    - destruct H0. split; [ | assumption ]. destruct H1 as [? [? ?]].
+      split.
+      + split; [ apply H1 | left; assumption ].
+      + split; [ apply H1 | ].
+        split; [ intro; eapply inv_rely; eassumption | ].
+
+
+
+
+FIXME: old stuff below
 
   (* Permission to end the lifetime [l], which gives us back [p].
      Every lifetime in [ls] is subsumed by [l]. *)
