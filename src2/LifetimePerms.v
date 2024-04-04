@@ -158,59 +158,109 @@ apply H. auto.
   Qed.
 
 
-  (* l subsumes all lifetimes in a set *)
-  Definition subsumes_all l (ls : nat -> Prop) x : Prop :=
-    forall l', ls l' -> subsumes l l' (lget x) (lget x).
+  (* l subsumes all lifetimes in a set, i.e., is no further along than *)
+  Definition all_lte l (ls : nat -> Prop) lts : Prop :=
+    forall l', ls l' -> statusOf_lte (lifetime lts l) (lifetime lts l').
 
-  Program Definition owned_basic (l : nat) (ls : nat -> Prop) : perm :=
+  (* All lifetimes in a set are finished *)
+  Definition all_finished (ls : nat -> Prop) lts : Prop :=
+    forall l, ls l -> lifetime lts l = Some finished.
+
+  (* NOTE: l < length lts is probably not strictly necessary, but removing it
+  would require a different version of nth_error_replace_list_index_neq *)
+  Lemma all_lte_finish l ls lts : l < length lts -> all_finished ls lts ->
+                                  all_lte l ls (replace_list_index lts l finished).
+  Proof.
+    repeat intro. destruct (Nat.eq_dec l' l).
+    - subst. reflexivity.
+    - unfold lifetime.
+      rewrite <- (nth_error_replace_list_index_neq _ l' l); try assumption.
+      unfold all_finished, lifetime in H0.
+      rewrite (H0 l' H1). apply finished_greatest.
+  Qed.
+
+  Lemma lte_current_lt_length l lts :
+    statusOf_lte (Some current) (lifetime lts l) -> l < length lts.
+  Proof.
+    intro. simpl in H. unfold lifetime, Lifetimes in H.
+    apply nth_error_Some; intro. rewrite H0 in H. assumption.
+  Qed.
+
+
+  (* Ownership of lifetime l, assuming it is currently active, that all
+  lifetimes in ls are children of l, and that pre must be satisfied whenever l
+  is finished. *)
+  Program Definition owned_basic (l : nat) (ls : nat -> Prop) (pred : S -> Prop) : perm :=
     {|
-      (** [l] must be current *)
+      (* [l] must be current *)
       pre x := lifetime (lget x) l = Some current;
 
-      rely x y := lifetime (lget x) l = lifetime (lget y) l;
+      (* Nobody else can change l or violate the all_lte invariant *)
+      rely x y :=
+        lifetime (lget x) l = lifetime (lget y) l /\
+          (all_lte l ls (lget x) -> all_lte l ls (lget y));
 
+      (* I can end l if pred is satisfied and all children are finished *)
       guar x y :=
-        x = y \/ y = (lput x (replace_list_index (lget x) l finished));
+        x = y \/
+          y = (lput x (replace_list_index (lget x) l finished)) /\
+            pred y /\ (forall l', ls l' -> lifetime (lget x) l' = Some finished);
 
-      inv x := statusOf_lte (Some current) (lifetime (lget x) l)
+      (* l has at least been allocated, and if l is finished then so are all its
+      children *)
+      inv x :=
+        statusOf_lte (Some current) (lifetime (lget x) l) /\
+          all_lte l ls (lget x);
     |}.
   Next Obligation.
     constructor; intros.
-    - intro; reflexivity.
-    - intros x y z Hzy Hyz. etransitivity; eassumption.
+    - intro; split; [ reflexivity | intro; assumption ].
+    - intros x y z [? ?] [? ?].
+      split; [ etransitivity; eassumption | auto ].
   Qed.
   Next Obligation.
     constructor; repeat intro.
     - left; reflexivity.
     - destruct H; [ subst; assumption | ].
-      destruct H0; [ subst; right; reflexivity | ].
-      right; subst. rewrite lGetPut.
-      rewrite lPutPut. rewrite replace_list_index_idem.
-      reflexivity.
+      destruct H0; [ subst; right; assumption | ].
+      destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
+      right; subst. repeat rewrite lGetPut. repeat rewrite lPutPut.
+      rewrite replace_list_index_idem.
+      split; [ reflexivity | ].
+      rewrite lPutPut in H3. rewrite lGetPut in H3.
+      rewrite replace_list_index_idem in H3.
+      split; [ assumption | ].
+      rewrite lGetPut in H4. assumption.
   Qed.
   Next Obligation.
-    change (statusOf_lte (Some current) (lifetime (lget y) l)).
-    destruct H; [ subst; try assumption | ].
-    etransitivity; [ eassumption | ]. subst. rewrite lGetPut.
-    unfold lifetime. rewrite nth_error_replace_list_index_eq.
-    apply finished_greatest.
+    destruct H as [? | [? [? ?]]]; subst; [ split; assumption | ].
+    rewrite lGetPut.
+    split; [ | apply all_lte_finish; try assumption;
+               apply lte_current_lt_length; assumption ].
+    unfold lifetime. rewrite nth_error_replace_list_index_eq. trivial.
   Qed.
 
 
-  Lemma separate_owned_lifetime_perm l ls n :
-    l < n -> owned_basic l ls ⊥ lifetime_perm n.
+  Lemma separate_owned_lifetime_perm l ls pred n :
+    l < n -> owned_basic l ls pred ⊥ lifetime_perm n.
   Proof.
     constructor; intros.
-    - destruct H2 as [? [? ?]]. apply H3; assumption.
+    - destruct H2 as [[lts_y ?] [? ?]]; subst.
+      split; [ apply H3; assumption | ].
+      repeat intro. rewrite lGetPut.
+      rewrite lGetPut in H3. rewrite lGetPut in H4.
+      rewrite <- (H3 l); [ | assumption ].
+      etransitivity; [ apply H2; eassumption | apply H4 ].
     - destruct H2; subst; [ reflexivity | ].
-      assert (l < length (lget x)); [ | split; [ | split ]].
-      + simpl in H0. unfold lifetime, Lifetimes in H0.
-        apply nth_error_Some; intro. rewrite H2 in H0. assumption.
+      destruct H2 as [? [? ?]]. subst. destruct H0. split; [ | split ].
       + rewrite lGetPut.
-        apply Lifetimes_lte_update; [ assumption | apply finished_greatest ].
-      + rewrite lGetPut. apply replace_list_index_length; assumption.
+        apply Lifetimes_lte_update;
+          [ apply lte_current_lt_length; assumption | apply finished_greatest ].
+      + rewrite lGetPut. apply replace_list_index_length.
+        apply lte_current_lt_length. assumption.
       + intros. rewrite lGetPut. unfold lifetime.
-        apply nth_error_replace_list_index_neq; [ assumption | ].
+        apply nth_error_replace_list_index_neq;
+          [ apply lte_current_lt_length; assumption | ].
         intro. subst. apply (Lt.lt_not_le l n); assumption.
   Qed.
 
@@ -366,13 +416,21 @@ apply H. auto.
   Qed.
 
 
-  Lemma perm_split_lt p l n :
-    (when l p ** after l p) ** lifetime_perm n <= p ** lifetime_perm n.
+  Lemma perm_split_lt p l ls n pred :
+    (when l p ** after l p) ** (lifetime_perm n ** owned_basic l ls (pred /1\ pre p))
+    <= p ** (lifetime_perm n ** owned_basic l ls pred).
   Proof.
     constructor; intros.
-    - destruct H0.
-      split; [ split | ]; [ left | intro | ]; assumption.
-    - destruct H0. split; [ | assumption ]. destruct H1 as [? [? ?]].
+    - simpl in H0; destruct H0 as [? [? ?]].
+      split; split; [ left | intro | | ]; assumption.
+    - destruct H0 as [? [? ?]].
+      split; split; try assumption.
+
+FIXME
+
+      simpl.
+
+destruct H0. split; [ | assumption ]. destruct H1 as [? [? ?]].
       split.
       + split; [ apply H1 | left; assumption ].
       + split; [ apply H1 | ].
