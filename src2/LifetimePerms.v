@@ -415,27 +415,46 @@ apply H. auto.
     rewrite H2; simpl; trivial.
   Qed.
 
+  Lemma separate_when_after l p : when l p ⊥ after l p.
+  Admitted.
 
-  Lemma perm_split_lt p l ls n pred :
-    (when l p ** after l p) ** (lifetime_perm n ** owned_basic l ls (pred /1\ pre p))
-    <= p ** (lifetime_perm n ** owned_basic l ls pred).
+  Lemma separate_when_after_owned l ls pred p :
+    p ⊥ owned_basic l ls pred ->
+    when l p ** after l p ⊥ owned_basic l ls (pred /1\ pre p).
+  Admitted.
+
+  Lemma perm_split_lt p l ls pred :
+    (when l p ** after l p) ** (owned_basic l ls (pred /1\ pre p))
+    <= p ** owned_basic l ls pred.
   Proof.
     constructor; intros.
-    - simpl in H0; destruct H0 as [? [? ?]].
-      split; split; [ left | intro | | ]; assumption.
+    - simpl in H0; destruct H0.
+      split; [ split | ]; [ left | intro | ]; assumption.
     - destruct H0 as [? [? ?]].
-      split; split; try assumption.
-
-FIXME
-
-      simpl.
-
-destruct H0. split; [ | assumption ]. destruct H1 as [? [? ?]].
-      split.
-      + split; [ apply H1 | left; assumption ].
-      + split; [ apply H1 | ].
-        split; [ intro; eapply inv_rely; eassumption | ].
-
+      simpl. split; [ split | ]; split; try assumption.
+      + rewrite H1. reflexivity.
+      + left; assumption.
+      + rewrite H1; reflexivity.
+      + split; [ intro; eapply inv_rely; eassumption | ].
+        split; [ | intro; assumption ].
+        rewrite H1. intros. eapply pre_respects; try eassumption. auto.
+    - simpl in H0. rewrite clos_trans_clos_trans_or in H0. clear H.
+      induction H0; [ destruct H; [ destruct H | ] | ].
+      + destruct H as [? | [? [? ?]]]; [ subst; reflexivity | ].
+        apply t_step; left; assumption.
+      + destruct H as [? | [? [? ?]]]; [ subst; reflexivity | ].
+        apply t_step; left; assumption.
+      + destruct H as [? | [? [[? ?] ?]]]; [ subst; reflexivity | ].
+        apply t_step; right; right.
+        split; [ assumption | ]. split; assumption.
+      + etransitivity; eassumption.
+    - destruct H as [? [[? ?] ?]].
+      split; split.
+      + split; assumption.
+      + split; [ split; assumption | ]. apply separate_when_after.
+      + split; assumption.
+      + apply separate_when_after_owned; assumption.
+  Qed.
 
 
 
