@@ -190,7 +190,7 @@ apply H. auto.
   (* Ownership of lifetime l, assuming it is currently active, that all
   lifetimes in ls are children of l, and that pre must be satisfied whenever l
   is finished. *)
-  Program Definition owned_basic (l : nat) (ls : nat -> Prop) (pred : S -> Prop) : perm :=
+  Program Definition owned (l : nat) (ls : nat -> Prop) (pred : S -> Prop) : perm :=
     {|
       (* [l] must be current *)
       pre x := lifetime (lget x) l = Some current;
@@ -242,7 +242,7 @@ apply H. auto.
 
 
   Lemma separate_owned_lifetime_perm l ls pred n :
-    l < n -> owned_basic l ls pred ⊥ lifetime_perm n.
+    l < n -> owned l ls pred ⊥ lifetime_perm n.
   Proof.
     constructor; intros.
     - destruct H2 as [[lts_y ?] [? ?]]; subst.
@@ -263,7 +263,6 @@ apply H. auto.
           [ apply lte_current_lt_length; assumption | ].
         intro. subst. apply (Lt.lt_not_le l n); assumption.
   Qed.
-
 
 
   (* Note: does not have permission to start or end the lifetime [l] *)
@@ -416,16 +415,66 @@ apply H. auto.
   Qed.
 
   Lemma separate_when_after l p : when l p ⊥ after l p.
-  Admitted.
+  Proof.
+    constructor; intros.
+    - destruct H1 as [ ? | [? [? ?]]]; [ subst; reflexivity | ].
+      split; [ rewrite H1; rewrite H2; reflexivity | ].
+      right; split; [ assumption | ].
+      destruct H0. eapply inv_guar; eassumption.
+    - destruct H1 as [ ? | [? [? ?]]]; [ subst; reflexivity | ].
+      split; [ rewrite H1; rewrite H2; reflexivity | ].
+      split; [ intro; eapply inv_guar; eassumption | ].
+      rewrite H1; rewrite H2.
+      split; intros; discriminate.
+  Qed.
+
+  Lemma separate_when_owned l ls pred p :
+    p ⊥ owned l ls pred ->
+    when l p ⊥ owned l ls (pred /1\ pre p).
+  Proof.
+    constructor; intros.
+    - destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ]. subst. simpl.
+      rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
+      split; [ apply finished_greatest | ].
+      destruct H1. left; apply (sep_l _ _ H); try assumption.
+      right; split; [ reflexivity | ]; split; assumption.
+    - destruct H2 as [ ? | [? [? ?]]]; [ subst; reflexivity | ]. destruct H0.
+      assert (rely (owned l ls pred) x y) as [? ?];
+        [ apply (sep_r _ _ H); assumption | ].
+      split; assumption.
+  Qed.
+
+  Lemma separate_after_owned l ls pred p :
+    p ⊥ owned l ls pred ->
+    after l p ⊥ owned l ls (pred /1\ pre p).
+  Proof.
+    constructor; intros.
+    - destruct H1. destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ].
+      assert (rely p x y).
+      + apply (sep_l _ _ H); try assumption.
+        right; split; [ | split ]; assumption.
+      + subst. simpl.
+        rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
+        split; [ apply finished_greatest | ].
+        split; [ intro; eapply inv_rely; eassumption | ].
+        split; intros; assumption.
+    - destruct H2 as [ ? | [? [? ?]]]; [ subst; reflexivity | ]. destruct H0.
+      assert (rely (owned l ls pred) x y) as [? ?];
+        [ apply (sep_r _ _ H); assumption | ].
+      split; assumption.
+  Qed.
 
   Lemma separate_when_after_owned l ls pred p :
-    p ⊥ owned_basic l ls pred ->
-    when l p ** after l p ⊥ owned_basic l ls (pred /1\ pre p).
-  Admitted.
+    p ⊥ owned l ls pred ->
+    when l p ** after l p ⊥ owned l ls (pred /1\ pre p).
+  Proof.
+    symmetry; apply sep_conj_perm_separate; symmetry;
+      [ apply separate_when_owned | apply separate_after_owned ]; assumption.
+  Qed.
 
   Lemma perm_split_lt p l ls pred :
-    (when l p ** after l p) ** (owned_basic l ls (pred /1\ pre p))
-    <= p ** owned_basic l ls pred.
+    (when l p ** after l p) ** (owned l ls (pred /1\ pre p))
+    <= p ** owned l ls pred.
   Proof.
     constructor; intros.
     - simpl in H0; destruct H0.
