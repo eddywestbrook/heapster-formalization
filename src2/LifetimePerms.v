@@ -265,6 +265,82 @@ apply H. auto.
   Qed.
 
 
+  Lemma owned_owned_separate_h l1 ls1 pred1 l2 ls2 pred2 x y :
+    l1 <> l2 -> inv (owned l1 ls1 pred1) x -> inv (owned l2 ls2 pred2) x ->
+    guar (owned l1 ls1 pred1) x y -> rely (owned l2 ls2 pred2) x y.
+  Proof.
+    intros. destruct H0. destruct H1.
+    destruct H2 as [? | [? [? ?]]]; subst; [ reflexivity | ].
+    simpl. rewrite lGetPut.
+    assert (l1 < length (lget x));
+      [ apply lte_current_lt_length; assumption | ].
+    unfold all_lte, lifetime.
+    rewrite <- nth_error_replace_list_index_neq;
+      [ | assumption | apply Nat.neq_sym; assumption ].
+    split; [ reflexivity | ]. intros.
+    destruct (Nat.eq_dec l' l1).
+    + subst. rewrite nth_error_replace_list_index_eq.
+      apply finished_greatest.
+    + rewrite <- nth_error_replace_list_index_neq; try assumption.
+      apply H7. assumption.
+  Qed.
+
+
+  (*
+  Lemma owned_owned_separate l1 ls1 pred1 l2 ls2 pred2 :
+    (exists x,
+        all_finished ls1 (lget x) /\
+          pred1 (lput x (replace_list_index (lget x) l1 finished))) ->
+    l1 <> l2 <-> owned l1 ls1 pred1 ⊥ owned l2 ls2 pred2.
+  Proof.
+    split; [ constructor | ]; intros.
+    - eapply owned_owned_separate_h; try apply Nat.neq_sym; eassumption.
+    - eapply owned_owned_separate_h; eassumption.
+    - destruct H as [? [? ?]].
+      assert (rely (owned l2 ls2 pred2)
+                x (lput x (replace_list_index (lget x) l1 finished)));
+
+
+      assert (guar (owned l1 ls1 pred1)
+                x (lput x (replace_list_index (lget x) l1 finished)));
+        [ right; split; [ reflexivity | split ]; assumption | ].
+   *)
+
+  Lemma owned_owned_separate l1 ls1 pred1 l2 ls2 pred2 :
+    l1 <> l2 -> owned l1 ls1 pred1 ⊥ owned l2 ls2 pred2.
+  Proof.
+    constructor; intros.
+    - eapply owned_owned_separate_h; try apply Nat.neq_sym; eassumption.
+    - eapply owned_owned_separate_h; eassumption.
+  Qed.
+
+
+  Lemma owned_subsume l1 ls1 pred1 l2 ls2 pred2 :
+    l1 <> l2 ->
+    sep_step (owned l1 ls1 pred1 ** owned l2 ls2 pred2)
+      (owned l1 (eq l2 \1/ ls1) pred1 ** owned l2 ls2 pred2).
+  Proof.
+    intro neq; apply sep_step_rg; intros.
+    - destruct H as [? [? ?]].
+      split; [ | split; [ | apply owned_owned_separate ]; assumption ].
+      destruct H. split; [ assumption | ].
+      repeat intro. apply H2. right; assumption.
+    - induction H0; [ destruct H0 | ].
+      + destruct H0 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+        apply t_step; left. right; split; [ | split ]; try assumption.
+        intros; apply H2. right; assumption.
+      + apply t_step; right; assumption.
+      + etransitivity; [ apply IHclos_trans1; assumption | ].
+        apply IHclos_trans2. eapply inv_guar; [ | eassumption ].
+        apply H0_.
+    - destruct H as [[? ?] [? ?]]. destruct H0. split; [ | assumption ].
+      destruct H0. destruct H4.
+      split; [ assumption | ]. repeat intro. destruct H8.
+      + subst. rewrite <- H0. rewrite <- H4. apply H7; left; reflexivity.
+      + apply H5; [ | assumption ]. repeat intro; apply H7; right; assumption.
+  Qed.
+
+
   (* Note: does not have permission to start or end the lifetime [l] *)
   Program Definition when (l : nat) (p : perm) : perm :=
     {|
