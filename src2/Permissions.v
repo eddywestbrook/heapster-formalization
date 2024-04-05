@@ -1261,6 +1261,20 @@ Section Permissions.
   Qed.
 
 
+  Lemma sep_conj_perm_separate p q r : p ⊥ q -> p ⊥ r -> p ⊥ q ** r.
+  Proof.
+    constructor; intros.
+    - induction H3; [ destruct H3 | ].
+      + destruct H1 as [? [? ?]]. apply (sep_l _ _ H); assumption.
+      + destruct H1 as [? [? ?]]. apply (sep_l _ _ H0); assumption.
+      + assert (rely p x y); [ apply IHclos_trans1; assumption | ].
+        etransitivity; [ eassumption | ]. apply IHclos_trans2.
+        * eapply inv_guar; eassumption.
+        * eapply inv_rely; eassumption.
+    - destruct H2 as [? [? ?]].
+      split; [ apply (sep_r _ _ H) | apply (sep_r _ _ H0) ]; assumption.
+  Qed.
+
   Lemma separate_sep_conj_perm_l p q r : p ⊥ q ** r -> p ⊥ (invperm (inv (q ** r)) ** q).
   Proof.
     intros.
