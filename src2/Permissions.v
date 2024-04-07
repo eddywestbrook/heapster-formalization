@@ -517,6 +517,19 @@ Section Permissions.
     constructor; simpl; intros; apply lte_invperm; apply H.
   Qed.
 
+  (* The permission with only a precondition, that is otherwise bottom *)
+  Program Definition preperm (pred : config -> Prop) : perm :=
+    {|
+      pre := pred;
+      rely x y := pred x -> pred y;
+      guar x y := x = y;
+      inv x := True
+    |}.
+  Next Obligation.
+    constructor; repeat intro; auto.
+  Qed.
+
+
   (*
   Program Definition join_perm' (ps: perm -> Prop) (H: exists p, ps p) : perm :=
     {|
@@ -1504,6 +1517,13 @@ Section Permissions.
     }.
   Notation "p ∈ P" := (in_Perms P p) (at level 60).
 
+  (* Build a permission set as the upwards closure of a set of permissions *)
+  Program Definition mkPerms (Ps : perm -> Prop) : Perms :=
+    {| in_Perms p := exists p', Ps p' /\ p' <= p |}.
+  Next Obligation.
+    eexists; split; [ | etransitivity ]; eassumption.
+  Qed.
+
   (** ** Permission set ordering *)
   (** Defined as superset. *)
   Definition lte_Perms (P Q : Perms) : Prop :=
@@ -1545,6 +1565,7 @@ Section Permissions.
     etransitivity; eassumption.
   Qed.
 
+  (* The complete join of a set of permission sets *)
   Program Definition join_Perms (Ps : Perms -> Prop) : Perms :=
     {|
       in_Perms := fun p => forall P, Ps P -> p ∈ P
@@ -1565,6 +1586,10 @@ Section Permissions.
     repeat intro.
     eapply H; eauto.
   Qed.
+
+  (* The join of two permission sets *)
+  Definition join_Perms2 P Q : Perms := join_Perms (fun R => R = P \/ R = Q).
+
 
   (** Complete meet of Perms sets = union *)
   Program Definition meet_Perms (Ps : Perms -> Prop) : Perms :=
@@ -1592,6 +1617,7 @@ Section Permissions.
   Qed.
 
   Definition meet_Perms2 P Q : Perms := meet_Perms (fun R => R = P \/ R = Q).
+
 
   (** Set equality *)
   Definition eq_Perms (P Q : Perms) : Prop := P ⊑ Q /\ Q ⊑ P.

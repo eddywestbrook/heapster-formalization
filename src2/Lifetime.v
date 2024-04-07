@@ -118,6 +118,37 @@ Proof.
 Qed.
 
 
+(* l is lte all lifetimes in a set, i.e., it subsumes them *)
+Definition all_lte l (ls : nat -> Prop) lts : Prop :=
+  forall l', ls l' -> statusOf_lte (lifetime lts l) (lifetime lts l').
+
+(* All lifetimes in a set are finished *)
+Definition all_finished (ls : nat -> Prop) lts : Prop :=
+  forall l, ls l -> lifetime lts l = Some finished.
+
+(* If all lifetime in ls are finished, then l is lte all of them.
+   NOTE: l < length lts is probably not strictly necessary, but removing it
+   would require a different version of nth_error_replace_list_index_neq *)
+Lemma all_lte_finish l ls lts : l < length lts -> all_finished ls lts ->
+                                all_lte l ls (replace_list_index lts l finished).
+Proof.
+  repeat intro. destruct (Nat.eq_dec l' l).
+  - subst. reflexivity.
+  - unfold lifetime.
+    rewrite <- (nth_error_replace_list_index_neq _ l' l); try assumption.
+    unfold all_finished, lifetime in H0.
+    rewrite (H0 l' H1). apply finished_greatest.
+Qed.
+
+(* If l has at least started then it is < the # allocated lifetimes *)
+Lemma lte_current_lt_length l lts :
+  statusOf_lte (Some current) (lifetime lts l) -> l < length lts.
+Proof.
+  intro. simpl in H. unfold lifetime, Lifetimes in H.
+  apply nth_error_Some; intro. rewrite H0 in H. assumption.
+Qed.
+
+
 Lemma subsumes_1_none_inv : forall s n1 n2,
     lifetime s n1 = None ->
     subsumes n1 n2 s s ->

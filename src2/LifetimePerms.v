@@ -31,19 +31,6 @@ Section LifetimePerms.
   Context `{Hlens: Lens S Lifetimes}.
 
   (*
-  Inductive LifetimeClauses :=
-  | Empty : LifetimeClauses
-  | Clause : nat -> nat -> LifetimeClauses -> LifetimeClauses
-  .
-  Fixpoint interp_LifetimeClauses (c : LifetimeClauses) (x : Si * Ss) : Prop :=
-    let (si, ss) := x in
-    match c with
-    | Empty => True
-    | Clause n1 n2 c' => subsumes n1 n2 (lget si) (lget si) /\
-                          interp_LifetimeClauses c' x
-    end.
-   *)
-
   (* Some lifetime permissions only work with other permissions that do not affect lifetimes *)
   Record nonLifetime p : Prop :=
     {
@@ -117,11 +104,12 @@ apply H. auto.
   Lemma nonLifetime_bottom : nonLifetime bottom_perm.
   Proof.
   Admitted.
+   *)
 
 
   (* Permission to allocate lifetimes with index >= n; also requires any other
   permissions (via its rely) to respect the lifetime evolution order *)
-  Program Definition lifetime_perm (n : nat) : perm :=
+  Program Definition lalloc_perm (n : nat) : perm :=
     {|
       pre x := length (lget x) = n;
 
@@ -158,39 +146,10 @@ apply H. auto.
   Qed.
 
 
-  (* l subsumes all lifetimes in a set, i.e., is no further along than *)
-  Definition all_lte l (ls : nat -> Prop) lts : Prop :=
-    forall l', ls l' -> statusOf_lte (lifetime lts l) (lifetime lts l').
-
-  (* All lifetimes in a set are finished *)
-  Definition all_finished (ls : nat -> Prop) lts : Prop :=
-    forall l, ls l -> lifetime lts l = Some finished.
-
-  (* NOTE: l < length lts is probably not strictly necessary, but removing it
-  would require a different version of nth_error_replace_list_index_neq *)
-  Lemma all_lte_finish l ls lts : l < length lts -> all_finished ls lts ->
-                                  all_lte l ls (replace_list_index lts l finished).
-  Proof.
-    repeat intro. destruct (Nat.eq_dec l' l).
-    - subst. reflexivity.
-    - unfold lifetime.
-      rewrite <- (nth_error_replace_list_index_neq _ l' l); try assumption.
-      unfold all_finished, lifetime in H0.
-      rewrite (H0 l' H1). apply finished_greatest.
-  Qed.
-
-  Lemma lte_current_lt_length l lts :
-    statusOf_lte (Some current) (lifetime lts l) -> l < length lts.
-  Proof.
-    intro. simpl in H. unfold lifetime, Lifetimes in H.
-    apply nth_error_Some; intro. rewrite H0 in H. assumption.
-  Qed.
-
-
   (* Ownership of lifetime l, assuming it is currently active, that all
   lifetimes in ls are children of l, and that pre must be satisfied whenever l
   is finished. *)
-  Program Definition owned (l : nat) (ls : nat -> Prop) (pred : S -> Prop) : perm :=
+  Program Definition lowned_perm l (ls : nat -> Prop) (pred : S -> Prop) :=
     {|
       (* [l] must be current *)
       pre x := lifetime (lget x) l = Some current;
@@ -241,8 +200,8 @@ apply H. auto.
   Qed.
 
 
-  Lemma separate_owned_lifetime_perm l ls pred n :
-    l < n -> owned l ls pred ⊥ lifetime_perm n.
+  Lemma separate_lowned_lalloc_perm l ls pred n :
+    l < n -> lowned_perm l ls pred ⊥ lalloc_perm n.
   Proof.
     constructor; intros.
     - destruct H2 as [[lts_y ?] [? ?]]; subst.
@@ -265,9 +224,10 @@ apply H. auto.
   Qed.
 
 
-  Lemma owned_owned_separate_h l1 ls1 pred1 l2 ls2 pred2 x y :
-    l1 <> l2 -> inv (owned l1 ls1 pred1) x -> inv (owned l2 ls2 pred2) x ->
-    guar (owned l1 ls1 pred1) x y -> rely (owned l2 ls2 pred2) x y.
+  Lemma lowned_lowned_separate_h l1 ls1 pred1 l2 ls2 pred2 x y :
+    l1 <> l2 -> inv (lowned_perm l1 ls1 pred1) x ->
+    inv (lowned_perm l2 ls2 pred2) x ->
+    guar (lowned_perm l1 ls1 pred1) x y -> rely (lowned_perm l2 ls2 pred2) x y.
   Proof.
     intros. destruct H0. destruct H1.
     destruct H2 as [? | [? [? ?]]]; subst; [ reflexivity | ].
@@ -306,23 +266,23 @@ apply H. auto.
         [ right; split; [ reflexivity | split ]; assumption | ].
    *)
 
-  Lemma owned_owned_separate l1 ls1 pred1 l2 ls2 pred2 :
-    l1 <> l2 -> owned l1 ls1 pred1 ⊥ owned l2 ls2 pred2.
+  Lemma lowned_lowned_separate l1 ls1 pred1 l2 ls2 pred2 :
+    l1 <> l2 -> lowned_perm l1 ls1 pred1 ⊥ lowned_perm l2 ls2 pred2.
   Proof.
     constructor; intros.
-    - eapply owned_owned_separate_h; try apply Nat.neq_sym; eassumption.
-    - eapply owned_owned_separate_h; eassumption.
+    - eapply lowned_lowned_separate_h; try apply Nat.neq_sym; eassumption.
+    - eapply lowned_lowned_separate_h; eassumption.
   Qed.
 
 
-  Lemma owned_subsume l1 ls1 pred1 l2 ls2 pred2 :
+  Lemma lowned_subsume l1 ls1 pred1 l2 ls2 pred2 :
     l1 <> l2 ->
-    sep_step (owned l1 ls1 pred1 ** owned l2 ls2 pred2)
-      (owned l1 (eq l2 \1/ ls1) pred1 ** owned l2 ls2 pred2).
+    sep_step (lowned_perm l1 ls1 pred1 ** lowned_perm l2 ls2 pred2)
+      (lowned_perm l1 (eq l2 \1/ ls1) pred1 ** lowned_perm l2 ls2 pred2).
   Proof.
     intro neq; apply sep_step_rg; intros.
     - destruct H as [? [? ?]].
-      split; [ | split; [ | apply owned_owned_separate ]; assumption ].
+      split; [ | split; [ | apply lowned_lowned_separate ]; assumption ].
       destruct H. split; [ assumption | ].
       repeat intro. apply H2. right; assumption.
     - induction H0; [ destruct H0 | ].
@@ -342,7 +302,7 @@ apply H. auto.
 
 
   (* Note: does not have permission to start or end the lifetime [l] *)
-  Program Definition when (l : nat) (p : perm) : perm :=
+  Program Definition when_perm (l : nat) (p : perm) : perm :=
     {|
       pre x := pre p x \/ lifetime (lget x) l = Some finished;
 
@@ -419,7 +379,7 @@ apply H. auto.
     Qed.
    *)
 
-  Lemma when_monotone n p1 p2 : p1 <= p2 -> when n p1 <= when n p2.
+  Lemma when_monotone n p1 p2 : p1 <= p2 -> when_perm n p1 <= when_perm n p2.
   Proof.
     constructor; intros.
     - destruct H1; [ | right; assumption ].
@@ -437,7 +397,7 @@ apply H. auto.
   Qed.
 
 
-  Program Definition after l p : perm :=
+  Program Definition after_perm l p : perm :=
     {|
       (** [l] must be current *)
       pre x := lifetime (lget x) l = Some finished -> pre p x;
@@ -490,7 +450,7 @@ apply H. auto.
     rewrite H2; simpl; trivial.
   Qed.
 
-  Lemma separate_when_after l p : when l p ⊥ after l p.
+  Lemma separate_when_after l p : when_perm l p ⊥ after_perm l p.
   Proof.
     constructor; intros.
     - destruct H1 as [ ? | [? [? ?]]]; [ subst; reflexivity | ].
@@ -504,9 +464,9 @@ apply H. auto.
       split; intros; discriminate.
   Qed.
 
-  Lemma separate_when_owned l ls pred p :
-    p ⊥ owned l ls pred ->
-    when l p ⊥ owned l ls (pred /1\ pre p).
+  Lemma separate_when_lowned l ls pred p :
+    p ⊥ lowned_perm l ls pred ->
+    when_perm l p ⊥ lowned_perm l ls (pred /1\ pre p).
   Proof.
     constructor; intros.
     - destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ]. subst. simpl.
@@ -515,14 +475,14 @@ apply H. auto.
       destruct H1. left; apply (sep_l _ _ H); try assumption.
       right; split; [ reflexivity | ]; split; assumption.
     - destruct H2 as [ ? | [? [? ?]]]; [ subst; reflexivity | ]. destruct H0.
-      assert (rely (owned l ls pred) x y) as [? ?];
+      assert (rely (lowned_perm l ls pred) x y) as [? ?];
         [ apply (sep_r _ _ H); assumption | ].
       split; assumption.
   Qed.
 
-  Lemma separate_after_owned l ls pred p :
-    p ⊥ owned l ls pred ->
-    after l p ⊥ owned l ls (pred /1\ pre p).
+  Lemma separate_after_lowned l ls pred p :
+    p ⊥ lowned_perm l ls pred ->
+    after_perm l p ⊥ lowned_perm l ls (pred /1\ pre p).
   Proof.
     constructor; intros.
     - destruct H1. destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ].
@@ -535,22 +495,22 @@ apply H. auto.
         split; [ intro; eapply inv_rely; eassumption | ].
         split; intros; assumption.
     - destruct H2 as [ ? | [? [? ?]]]; [ subst; reflexivity | ]. destruct H0.
-      assert (rely (owned l ls pred) x y) as [? ?];
+      assert (rely (lowned_perm l ls pred) x y) as [? ?];
         [ apply (sep_r _ _ H); assumption | ].
       split; assumption.
   Qed.
 
-  Lemma separate_when_after_owned l ls pred p :
-    p ⊥ owned l ls pred ->
-    when l p ** after l p ⊥ owned l ls (pred /1\ pre p).
+  Lemma separate_when_after_lowned l ls pred p :
+    p ⊥ lowned_perm l ls pred ->
+    when_perm l p ** after_perm l p ⊥ lowned_perm l ls (pred /1\ pre p).
   Proof.
     symmetry; apply sep_conj_perm_separate; symmetry;
-      [ apply separate_when_owned | apply separate_after_owned ]; assumption.
+      [ apply separate_when_lowned | apply separate_after_lowned ]; assumption.
   Qed.
 
   Lemma perm_split_lt p l ls pred :
-    (when l p ** after l p) ** (owned l ls (pred /1\ pre p))
-    <= p ** owned l ls pred.
+    (when_perm l p ** after_perm l p) ** (lowned_perm l ls (pred /1\ pre p))
+    <= p ** lowned_perm l ls pred.
   Proof.
     constructor; intros.
     - simpl in H0; destruct H0.
@@ -578,208 +538,79 @@ apply H. auto.
       + split; assumption.
       + split; [ split; assumption | ]. apply separate_when_after.
       + split; assumption.
-      + apply separate_when_after_owned; assumption.
+      + apply separate_when_after_lowned; assumption.
   Qed.
 
 
+  (* Needed to prove the following associativity lemma *)
+  Lemma sep_after_lowned_sep_after l ls pred p q :
+    after_perm l p ⊥ after_perm l q ** lowned_perm l ls pred ->
+    after_perm l p ⊥ after_perm l q.
+  Admitted.
 
-FIXME: old stuff below
-
-  (* Permission to end the lifetime [l], which gives us back [p].
-     Every lifetime in [ls] is subsumed by [l]. *)
-  Program Definition owned (l : nat) (ls : nat -> Prop) p : perm :=
-    {|
-      (** [l] must be current *)
-      pre x := lifetime (lget x) l = Some current;
-
-      (** nobody else can change [l]. If [l] is finished, the rely of [p] holds *)
-      rely x y :=
-        lifetime (lget x) l = lifetime (lget y) l /\
-          (inv p x -> inv p y) /\
-          (lifetime (lget x) l = Some finished -> rely p x y);
-
-      (** If [l] is finished afterwards, the guar of [p] holds *)
-      guar x y :=
-        x = y \/
-          Lifetimes_lte (lget x) (lget y) /\
-            lifetime (lget y) l = Some finished /\
-            guar p
-              (lput x (replace_list_index (lget x) l finished))
-              (lput y (replace_list_index (lget y) l finished));
-
-      inv x := inv p x /\ statusOf_lte (Some current) (lifetime (lget x) l)
-    |}.
-  Next Obligation.
-    constructor; repeat intro.
-    - split; [ reflexivity | ].
-      split; [ intro; assumption | ]. intro; reflexivity.
-    - destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
-      split; [ etransitivity; eassumption | ].
-      split; [ auto | ].
-      intro; etransitivity; [ apply H2 | apply H4 ]; try assumption.
-      rewrite <- H; assumption.
+  (* I think this will be useful for the lowned rules *)
+  Lemma after_after_lowned_assoc l ls pred p q :
+    after_perm l p ⊥ after_perm l q ** lowned_perm l ls pred ->
+    (lowned_perm l ls pred ** (after_perm l p ** after_perm l q))
+    <= ((lowned_perm l ls pred ** after_perm l p) ** after_perm l q).
+  Proof.
+    intro. apply sep_conj_perm_assoc'. eapply sep_after_lowned_sep_after.
+    eassumption.
   Qed.
-  Next Obligation.
-    constructor; repeat intro.
-    - left; reflexivity.
-    - destruct H; [ subst; assumption | ].
-      destruct H0; [ subst; right; assumption | ].
-      destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
-      right. split; [ etransitivity; eassumption | ].
-      split; [ assumption | ].
-      etransitivity; eassumption.
-  Qed.
-  Next Obligation.
-    destruct H; [ subst; split; assumption | ].
-    destruct H as [? [? ?]].
-    split; [ | rewrite H2; trivial ].
-    rewrite (replace_list_index_eq
-               _ (@lget Si (list status) Hlens y) _ _ H2) in H3.
-    rewrite lPutGet in H3.
-    eapply inv_guar; try eassumption.
-    (* apply nonLT_inv; assumption.
-  Qed. *)
+
+
+  (* l1 is current whenever l2 is current, i.e., Some current <= l1 <= l2. This
+  means that l1 is an ancestor of l2, i.e., a larger lifetime containing l2. *)
+  Definition lcurrent l1 l2 :=
+    invperm (fun x =>
+               statusOf_lte (Some current) (lifetime (lget x) l1) /\
+                 statusOf_lte (lifetime (lget x) l1) (lifetime (lget x) l2)).
+
+  Lemma lcurrent_trans l1 l2 l3 :
+    lcurrent l1 l3 <= lcurrent l1 l2 ** lcurrent l2 l3.
+  Proof.
+    constructor; intros.
+    - apply I.
+    - destruct H as [[? ?] [[? ?] ?]]. destruct H0 as [? ?].
   Admitted.
 
 
-  Lemma owned_monotone l ls p1 p2 Hp1 Hp2 :
-    p1 <= p2 -> owned l ls p1 Hp1 <= owned l ls p2 Hp2.
+  (* Lifetime l is finished *)
+  Definition lfinished l :=
+    invperm (fun x => lifetime (lget x) l = Some finished).
+
+  (* If l is finished then we can recover a permission from an after_perm *)
+  Lemma lfinished_after l p : p <= lfinished l ** after_perm l p.
   Proof.
-    constructor; intros.
-    - apply H1.
-    - destruct H1 as [? [? [? ?]]]. destruct H0.
-      split; [ assumption | ]. split; [ assumption | ]. split; intros.
-      + apply H. auto.
-      + apply H; [ assumption | ]. apply H4; assumption.
-    - destruct H1; [ subst; reflexivity | ].
-      destruct H1 as [? [? ?]]. right.
-      split; [ assumption | ]. split; [ assumption | ].
-      destruct H0. apply H; try assumption.
-      apply nonLT_inv; assumption.
-    - destruct H0. split; [ apply H | ]; assumption.
-  Qed.
+  Admitted.
 
 
+  (***
+   *** Lifetime ownership permission set
+   ***)
 
-  Lemma when_owned_sep l ls p q Hp Hq :
-    p ⊥ invperm (inv q) -> q ⊥ invperm (inv p) -> when l p Hp ⊥ owned l ls q Hq.
-  Proof.
-    split; intros.
-    - destruct H1. destruct H2.
-      destruct H3 as [? | [? [? ?]]]; [ subst; reflexivity | ].
-      split; [ assumption | ].
-      right; split; [ assumption | ].
-      eapply (inv_rely (invperm (inv p))); [ | eassumption ].
-      eapply sep_r; eassumption.
-    - destruct H1. destruct H2.
-      destruct H3 as [? | [? [? ?]]]; [ subst; reflexivity | ].
-      assert (lget x = lget y); [ apply Hp; assumption | ].
-      simpl; rewrite H8.
-      split; [ reflexivity | ]. split; [ reflexivity | ].
-      split; intros.
-      + eapply (inv_rely (invperm (inv q))); [ | eassumption ].
-        eapply sep_r; eassumption.
-      + rewrite H6 in H9. inversion H9.
-  Qed.
+  (* The set of lowned_perm l ls pred permissions for some pred *)
+  Definition lowned_set l ls :=
+    mkPerms (fun r => exists pred, r = lowned_perm l ls pred).
 
-    Lemma lifetime_split_sep l ls p q Hp Hq  :
-      p ⊥ owned l ls q Hq ->
-      when l p Hp ⊥ owned l ls (p ** q) (nonLifetime_sep_conj _ _ Hp Hq).
-    Proof.
-      intros. eapply when_owned_sep.
-      - symmetry; apply separate_bigger_invperm. apply lte_l_sep_conj_perm.
-      - apply separate_invperm; intros.
-        
+  (* The set of lowned permissions along with assertions of their preds *)
+  Definition lowned_pre_set l ls :=
+    mkPerms (fun r => exists pred, r = preperm pred ** lowned_perm l ls pred).
 
-apply separate_bigger_invperm.
-    Qed.
-    (*   split; intros. *)
-    (*   - destruct x, y, x, x0. cbn in *. destruct H0. *)
-    (*     + inversion H0. subst. split; try reflexivity. *)
-    (*       intros. rewrite H0. reflexivity. *)
-    (*     + destruct H0 as (? & ? & ?). split; auto. *)
-    (*       intros. destruct H3; rewrite H3 in H1; discriminate H1. *)
-    (*   - destruct x, y, x, x0. cbn in *. destruct H0. *)
-    (*     + inversion H0. subst. split; [| split]; try reflexivity. *)
-    (*       intros. split; rewrite H0; reflexivity. *)
-    (*     + destruct H0 as (? & ? & ? & ?). split; [| split]; auto. *)
-    (*       rewrite H1, H2; auto. *)
-    (*       intros. rewrite H4 in H1. discriminate H1. *)
-    (* Qed. *)
+  (* The set of permissions after_perm l p for all p in P *)
+  Definition after_set l P :=
+    mkPerms (fun r => exists p, in_Perms P p /\ r = after_perm l p).
 
-    Lemma convert p q l ls Hls Hp Hq :
-      when l p Hp ** owned l ls Hls (p ** q) (nonLifetime_sep_conj c _ _ Hp Hq) <=
-        p ** owned l ls Hls q Hq.
-    Proof.
-      split; intros.
-      - destruct x, x. cbn in *. decompose [and] H; auto. clear H.
-        split; auto.
-        split; [| eapply lifetimes_sep; eauto].
-        destruct H2; intuition.
-        (* right. split; [| split; [| split]]; auto. *)
-        (* destruct H3. split. *)
-        (* + intros [[]] [[]] ?. apply sep_l. cbn. right. split; auto. *)
+  (* The lifetime ownership permission set, which says:
+     1. We currently own lifetime l with sub-lifetimes in ls; and
+     2. If we give back any permission in P, we can end l and get back Q *)
+  Definition lowned l ls P Q :=
+    join_Perms2
+      (lowned_set l ls)
+      (impl_Perms P (lowned_pre_set l ls * after_set l Q)).
 
-        (* eapply lifetimes_sep; eauto. *)
-      - destruct x, y, x, x0. cbn in *. destruct H as (? & ? & ? & ?).
-        split; [| split; [| split]]; auto.
-      - destruct x, y, x, x0. cbn in H. induction H. 2: econstructor 2; eauto.
-        clear i s s0. clear i0 s1 s2.
-        destruct x, y, x, x0. cbn in *.
-        destruct H.
-        + destruct H.
-          * inversion H. subst. constructor 1. left. rewrite H. reflexivity.
-          * destruct H as (? & ? & ? & ?). constructor 1. cbn. left. auto.
-        + destruct H.
-          * constructor 1. left. rewrite H. reflexivity.
-          * destruct H as (? & ? & ?).
-            rename H into Hlte, H0 into Hfin, H1 into Hguar.
-            {
-              apply Operators_Properties.clos_trans_t1n_iff.
-              apply Operators_Properties.clos_trans_t1n_iff in Hguar.
-              remember (exist _ _ i).
-              remember (exist _ _ i0).
-              revert s s0 s1 s2 i i0 Heqs3 Heqs4 Hlte Hfin.
-              induction Hguar; intros; subst.
-              - constructor 1. destruct H; auto.
-                right. cbn in *.
-                right. split; [| split]; auto.
-              - econstructor 2.
-                2: { destruct y, x. eapply IHHguar; auto.
-                     clear IHHguar H.
-                     remember (exist _ _ i1).
-                     remember (exist _ _ i0).
-                     revert s1 s2 s3 s4 i0 i1 Heqs5 Heqs6 Hlte Hfin.
-                     induction Hguar; intros; subst.
-                     - destruct H.
-                       + specialize (Hp _ _ H). cbn in Hp. rewrite Hp. reflexivity.
-                       + specialize (Hq _ _ H). cbn in Hq. rewrite Hq. reflexivity.
-                     - destruct H.
-                       + destruct y, x.
-                         specialize (Hp _ _ H). cbn in Hp. rewrite Hp.
-                         eapply IHHguar; auto.
-                       + destruct y, x.
-                         specialize (Hq _ _ H). cbn in Hq. rewrite Hq.
-                         eapply IHHguar; auto.
-                }
-                clear IHHguar. destruct H; auto.
-                right. destruct y, x. cbn in *. right. split; [| split]; auto.
-                + specialize (Hq _ _ H). cbn in Hq. rewrite Hq. reflexivity.
-                + clear Hls Hlte H.
-                  remember (exist _ _ i1).
-                  remember (exist _ _ i0).
-                  revert s1 s2 s3 s4 i0 i1 Heqs5 Heqs6 Hfin.
-                  induction Hguar; intros; subst.
-                  * destruct H.
-                    -- specialize (Hp _ _ H). cbn in *. rewrite Hp. auto.
-                    -- specialize (Hq _ _ H). cbn in *. rewrite Hq. auto.
-                  * destruct y, x. subst. destruct H.
-                    -- specialize (Hp _ _ H). cbn in *. rewrite Hp.
-                       eapply IHHguar; eauto.
-                    -- specialize (Hq _ _ H). cbn in *. rewrite Hq.
-                       eapply IHHguar; eauto.
-            }
-    Qed.
+
+FIXME: old stuff below
 
     Program Definition lcurrent l1 l2
             (H : forall (x : {x : Si * Ss | interp_LifetimeClauses c x}),
