@@ -660,10 +660,43 @@ apply H. auto.
     apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
   Qed.
 
-  (* If l is finished then we can recover a permission from an after_perm *)
-  Lemma lfinished_after l p : p <= lfinished l ** after_perm l p.
+  (* If l is finished then we can recover a permission from an after_perm,
+  assuming that permission is separate from lfinished *)
+  Lemma lfinished_after l p :
+    p ⊥ lfinished l ->
+    eq_perm (lfinished l ** p) (lfinished l ** after_perm l p).
   Proof.
-  Admitted.
+    intro p_sep; constructor; constructor; intros.
+    - destruct H as [? [? ?]]. destruct H0.
+      split; [ apply I | ]. apply H3. assumption.
+    - destruct H as [? [? ?]]. destruct H0 as [? [? [? [? ?]]]].
+      split; [ assumption | ]. apply H6; assumption.
+    - destruct H as [? [[? ?] ?]].
+      unfold lfinished in H0. rewrite sep_conj_invperm_guar_eq in H0.
+      apply t_step; right; right.
+      split; [ assumption | ]. split; [ | assumption ].
+      eapply (inv_rely (lfinished l)); [ | eassumption ].
+      apply (sep_r _ _ p_sep); assumption.
+    - destruct H as [? [[? ?] ?]].
+      split; [ | split ]; try assumption. symmetry; assumption.
+    - destruct H as [? [? ?]]. destruct H0. split; [ apply I | ].
+      intro; assumption.
+    - destruct H as [? [? ?]]. destruct H0.
+      split; [ assumption | ]. simpl in H. simpl in H0.
+      split; [ | split; [ | split ] ].
+      + rewrite H. rewrite (H0 H). reflexivity.
+      + intro; eapply inv_rely; eassumption.
+      + intros. eapply pre_respects; eauto.
+      + intros; assumption.
+    - unfold lfinished in H0; rewrite sep_conj_invperm_guar_eq in H0.
+      unfold lfinished; rewrite sep_conj_invperm_guar_eq.
+      destruct H0 as [? | [? [? ?]]]; [ subst; reflexivity | assumption ].
+    - destruct H as [? [? ?]]. split; [ assumption | ].
+      split; [ split; [ assumption | ] | ].
+      + simpl in H. rewrite H. apply finished_greatest.
+      + symmetry; apply separate_invperm; intros.
+        destruct H3 as [? | [? [? ?]]]; [ subst | ]; assumption.
+  Qed.
 
 
   (***
