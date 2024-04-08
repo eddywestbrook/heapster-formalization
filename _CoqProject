@@ -26,6 +26,7 @@ src/LifetimePerms.v
 src2/Utils.v
 src2/Memory.v
 src2/Lifetime.v
+src2/LifetimePerms.v
 
 src2/Permissions.v
 src2/SepStep.v
