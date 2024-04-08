@@ -1097,6 +1097,18 @@ Section Permissions.
     split; [ apply sep_conj_self_invperm' | apply lte_l_sep_conj_perm ].
   Qed.
 
+  (* A permission that is separate from itself can be duplicated *)
+  Lemma dup_self_sep p : p ⊥ p -> eq_perm p (p ** p).
+  Proof.
+    intro self_sep; split; [ apply lte_l_sep_conj_perm; reflexivity | ].
+    constructor; intros.
+    - split; assumption.
+    - split; assumption.
+    - clear H. induction H0; [ destruct H | etransitivity ]; eassumption.
+    - split; [ | split ]; assumption.
+  Qed.
+
+
   (** We can always weaken permissions and retain separateness, as long as we
       add the stronger invariant to the weaker permission *)
 
