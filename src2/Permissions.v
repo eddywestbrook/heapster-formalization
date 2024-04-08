@@ -934,6 +934,14 @@ Section Permissions.
     - eapply H; eassumption.
   Qed.
 
+  (* Permissions with a trivial guarantee are always self-separate *)
+  Lemma self_sep_trivial_guar p :
+    (forall x y, guar p x y <-> x = y) -> p ⊥ p.
+  Proof.
+    intro H; constructor; intros;
+      rewrite (H x y) in H2; inversion H2; reflexivity.
+  Qed.
+
 
   (** ** Separating conjunction for permissions *)
   Program Definition sep_conj_perm (p q: perm) : perm :=
@@ -1106,6 +1114,12 @@ Section Permissions.
     - split; assumption.
     - clear H. induction H0; [ destruct H | etransitivity ]; eassumption.
     - split; [ | split ]; assumption.
+  Qed.
+
+  (* Any invperm can always be duplicated *)
+  Lemma invperm_dup pred : eq_perm (invperm pred) (invperm pred ** invperm pred).
+  Proof.
+    apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
   Qed.
 
 

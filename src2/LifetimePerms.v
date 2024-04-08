@@ -597,6 +597,13 @@ apply H. auto.
     - auto.
   Qed.
 
+  (* lcurrent can be duplicated *)
+  Lemma lcurrent_dup l1 l2 :
+    eq_perm (lcurrent l1 l2) (lcurrent l1 l2 ** lcurrent l1 l2).
+  Proof.
+    apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
+  Qed.
+
   (* Transitivity of lcurrent *)
   Lemma lcurrent_trans l1 l2 l3 :
     lcurrent l1 l3 <= lcurrent l1 l2 ** lcurrent l2 l3.
@@ -647,6 +654,11 @@ apply H. auto.
   (* Lifetime l is finished *)
   Definition lfinished l :=
     invperm (fun x => lifetime (lget x) l = Some finished).
+
+  Lemma lfinished_dup l : eq_perm (lfinished l) (lfinished l ** lfinished l).
+  Proof.
+    apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
+  Qed.
 
   (* If l is finished then we can recover a permission from an after_perm *)
   Lemma lfinished_after l p : p <= lfinished l ** after_perm l p.
