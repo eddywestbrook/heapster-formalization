@@ -26,6 +26,31 @@ From Paco Require Import
 Import ListNotations.
 (* end hide *)
 
+Global Instance PreOrder_trivial {A} : @PreOrder A (fun _ _ => True).
+Proof.
+  constructor; repeat intro; trivial.
+Qed.
+
+Global Instance PreOrder_and {A} (R1 R2 : A -> A -> Prop) `{PreOrder A R1} `{PreOrder A R2} :
+  PreOrder (fun x y => R1 x y /\ R2 x y).
+Proof.
+  constructor; repeat intro.
+  - split; reflexivity.
+  - destruct H1; destruct H2; split; etransitivity; eassumption.
+Qed.
+
+Global Instance PreOrder_impl {A} (R : A -> Prop) : PreOrder (fun x y => R x -> R y).
+Proof.
+  constructor; repeat intro; auto.
+Qed.
+
+Global Instance PreOrder_map_PreOrder {A B} f R `{PreOrder B R} :
+  @PreOrder A (fun x y => R (f x) (f y)).
+Proof.
+  constructor; repeat intro; [ reflexivity | etransitivity; eassumption ].
+Qed.
+
+
 Section LifetimePerms.
   Context {S : Type}.
   Context `{Hlens: Lens S Lifetimes}.
@@ -126,12 +151,9 @@ apply H. auto.
       inv x := True;
     |}.
   Next Obligation.
-    constructor; repeat intro.
-    - split; [ | split ]; reflexivity.
-    - destruct H as [? [? ?]]; destruct H0 as [? [? ?]].
-      split; [ etransitivity; eassumption | ].
-      split; [ etransitivity; eassumption | ]; intros.
-      etransitivity; [ apply H2 | apply H4 ]; assumption.
+    repeat apply PreOrder_and; try (apply PreOrder_map_PreOrder; typeclasses eauto).
+    constructor; repeat intro; [ reflexivity | ].
+    etransitivity; [ apply H | apply H0 ]; assumption.
   Qed.
   Next Obligation.
     constructor; repeat intro.
@@ -171,12 +193,6 @@ apply H. auto.
         statusOf_lte (Some current) (lifetime (lget x) l) /\
           all_lte l ls (lget x);
     |}.
-  Next Obligation.
-    constructor; intros.
-    - intro; split; [ reflexivity | intro; assumption ].
-    - intros x y z [? ?] [? ?].
-      split; [ etransitivity; eassumption | auto ].
-  Qed.
   Next Obligation.
     constructor; repeat intro.
     - left; reflexivity.
@@ -561,18 +577,71 @@ apply H. auto.
 
   (* l1 is current whenever l2 is current, i.e., Some current <= l1 <= l2. This
   means that l1 is an ancestor of l2, i.e., a larger lifetime containing l2. *)
-  Definition lcurrent l1 l2 :=
-    invperm (fun x =>
-               statusOf_lte (Some current) (lifetime (lget x) l1) /\
-                 statusOf_lte (lifetime (lget x) l1) (lifetime (lget x) l2)).
+  Program Definition lcurrent l1 l2 :=
+    {|
+      pre x := True;
+      rely x y :=
+        statusOf_lte (lifetime (lget x) l1) (lifetime (lget y) l1) /\
+          statusOf_lte (lifetime (lget x) l2) (lifetime (lget y) l2) /\
+          (statusOf_lte (lifetime (lget x) l1) (lifetime (lget x) l2) ->
+           statusOf_lte (lifetime (lget y) l1) (lifetime (lget y) l2));
+      guar x y := x = y;
+      inv x :=
+        statusOf_lte (Some current) (lifetime (lget x) l1) /\
+          statusOf_lte (lifetime (lget x) l1) (lifetime (lget x) l2)
+    |}.
+  Next Obligation.
+    split.
+    - change (statusOf_lte (Some current) (lifetime (lget y) l1)).
+      etransitivity; eassumption.
+    - auto.
+  Qed.
 
+  (* Transitivity of lcurrent *)
   Lemma lcurrent_trans l1 l2 l3 :
     lcurrent l1 l3 <= lcurrent l1 l2 ** lcurrent l2 l3.
   Proof.
     constructor; intros.
     - apply I.
-    - destruct H as [[? ?] [[? ?] ?]]. destruct H0 as [? ?].
-  Admitted.
+    - destruct H as [[? ?] [[? ?] ?]].
+      destruct H0 as [[? [? ?]] [? [? ?]]].
+      split; [ assumption | ]. split; [ assumption | ]. intro.
+      etransitivity; eauto.
+    - simpl in H0. apply t_step; left; assumption.
+    - destruct H as [[? ?] [[? ?] ?]].
+      split; [ assumption | ]. etransitivity; eassumption.
+  Qed.
+
+
+  (* Separateness of p from lcurrent l1 l2 is necessary to ensure that any guar
+  step of when_perm l2 p does not end l1 *)
+  Lemma lcurrent_when l1 l2 p :
+    p ⊥ lcurrent l1 l2 ->
+    when_perm l2 p <= when_perm l1 p ** lcurrent l1 l2.
+  Proof.
+    intro p_sep; constructor; intros.
+    - destruct H as [[? ?] [[? ?] ?]].
+      destruct H0 as [[? | ?] ?]; [ left; assumption | ].
+      right. apply finished_lte_eq. rewrite <- H0. assumption.
+    - destruct H as [[? ?] [[? ?] ?]]. destruct H0 as [[? ?] [? [? ?]]].
+      split; [ assumption | ].
+      destruct H5 as [? | [? ?]]; [ left; assumption | ].
+      right; split; [ | assumption ].
+      apply finished_lte_eq. rewrite <- H5.
+      apply H8. assumption.
+    - destruct H as [[? ?] [[? ?] ?]].
+      destruct H0 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+      apply t_step; left; right. split; [ | split ]; try assumption.
+      + apply statusOf_lte_eq; try assumption.
+        rewrite <- H0. assumption.
+      + assert (inv (lcurrent l1 l2) y) as [? ?].
+        * eapply inv_rely; [ | split; eassumption ].
+          apply (sep_r _ _ p_sep); try assumption. split; assumption.
+        * apply statusOf_lte_eq; try assumption.
+          rewrite <- H5. assumption.
+    - destruct H as [[? ?] [[? ?] ?]].
+      split; [ assumption | ]. etransitivity; eassumption.
+  Qed.
 
 
   (* Lifetime l is finished *)
