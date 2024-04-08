@@ -577,7 +577,7 @@ apply H. auto.
 
   (* l1 is current whenever l2 is current, i.e., Some current <= l1 <= l2. This
   means that l1 is an ancestor of l2, i.e., a larger lifetime containing l2. *)
-  Program Definition lcurrent l1 l2 :=
+  Program Definition lcurrent_perm l1 l2 :=
     {|
       pre x := True;
       rely x y :=
@@ -599,14 +599,14 @@ apply H. auto.
 
   (* lcurrent can be duplicated *)
   Lemma lcurrent_dup l1 l2 :
-    eq_perm (lcurrent l1 l2) (lcurrent l1 l2 ** lcurrent l1 l2).
+    eq_perm (lcurrent_perm l1 l2) (lcurrent_perm l1 l2 ** lcurrent_perm l1 l2).
   Proof.
     apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
   Qed.
 
   (* Transitivity of lcurrent *)
   Lemma lcurrent_trans l1 l2 l3 :
-    lcurrent l1 l3 <= lcurrent l1 l2 ** lcurrent l2 l3.
+    lcurrent_perm l1 l3 <= lcurrent_perm l1 l2 ** lcurrent_perm l2 l3.
   Proof.
     constructor; intros.
     - apply I.
@@ -623,8 +623,8 @@ apply H. auto.
   (* Separateness of p from lcurrent l1 l2 is necessary to ensure that any guar
   step of when_perm l2 p does not end l1 *)
   Lemma lcurrent_when l1 l2 p :
-    p ⊥ lcurrent l1 l2 ->
-    when_perm l2 p <= when_perm l1 p ** lcurrent l1 l2.
+    p ⊥ lcurrent_perm l1 l2 ->
+    when_perm l2 p <= when_perm l1 p ** lcurrent_perm l1 l2.
   Proof.
     intro p_sep; constructor; intros.
     - destruct H as [[? ?] [[? ?] ?]].
@@ -641,7 +641,7 @@ apply H. auto.
       apply t_step; left; right. split; [ | split ]; try assumption.
       + apply statusOf_lte_eq; try assumption.
         rewrite <- H0. assumption.
-      + assert (inv (lcurrent l1 l2) y) as [? ?].
+      + assert (inv (lcurrent_perm l1 l2) y) as [? ?].
         * eapply inv_rely; [ | split; eassumption ].
           apply (sep_r _ _ p_sep); try assumption. split; assumption.
         * apply statusOf_lte_eq; try assumption.
@@ -652,10 +652,11 @@ apply H. auto.
 
 
   (* Lifetime l is finished *)
-  Definition lfinished l :=
+  Definition lfinished_perm l :=
     invperm (fun x => lifetime (lget x) l = Some finished).
 
-  Lemma lfinished_dup l : eq_perm (lfinished l) (lfinished l ** lfinished l).
+  Lemma lfinished_dup l :
+    eq_perm (lfinished_perm l) (lfinished_perm l ** lfinished_perm l).
   Proof.
     apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
   Qed.
@@ -663,8 +664,8 @@ apply H. auto.
   (* If l is finished then we can recover a permission from an after_perm,
   assuming that permission is separate from lfinished *)
   Lemma lfinished_after l p :
-    p ⊥ lfinished l ->
-    eq_perm (lfinished l ** p) (lfinished l ** after_perm l p).
+    p ⊥ lfinished_perm l ->
+    eq_perm (lfinished_perm l ** p) (lfinished_perm l ** after_perm l p).
   Proof.
     intro p_sep; constructor; constructor; intros.
     - destruct H as [? [? ?]]. destruct H0.
@@ -672,10 +673,10 @@ apply H. auto.
     - destruct H as [? [? ?]]. destruct H0 as [? [? [? [? ?]]]].
       split; [ assumption | ]. apply H6; assumption.
     - destruct H as [? [[? ?] ?]].
-      unfold lfinished in H0. rewrite sep_conj_invperm_guar_eq in H0.
+      unfold lfinished_perm in H0. rewrite sep_conj_invperm_guar_eq in H0.
       apply t_step; right; right.
       split; [ assumption | ]. split; [ | assumption ].
-      eapply (inv_rely (lfinished l)); [ | eassumption ].
+      eapply (inv_rely (lfinished_perm l)); [ | eassumption ].
       apply (sep_r _ _ p_sep); assumption.
     - destruct H as [? [[? ?] ?]].
       split; [ | split ]; try assumption. symmetry; assumption.
@@ -688,8 +689,8 @@ apply H. auto.
       + intro; eapply inv_rely; eassumption.
       + intros. eapply pre_respects; eauto.
       + intros; assumption.
-    - unfold lfinished in H0; rewrite sep_conj_invperm_guar_eq in H0.
-      unfold lfinished; rewrite sep_conj_invperm_guar_eq.
+    - unfold lfinished_perm in H0; rewrite sep_conj_invperm_guar_eq in H0.
+      unfold lfinished_perm; rewrite sep_conj_invperm_guar_eq.
       destruct H0 as [? | [? [? ?]]]; [ subst; reflexivity | assumption ].
     - destruct H as [? [? ?]]. split; [ assumption | ].
       split; [ split; [ assumption | ] | ].
@@ -702,6 +703,10 @@ apply H. auto.
   (***
    *** Lifetime ownership permission set
    ***)
+
+
+  (* The permission set allowing allocation of lifetimes *)
+  Definition lalloc := mkPerms (fun r => exists n, r = lalloc_perm n).
 
   (* The set of lowned_perm l ls pred permissions for some pred *)
   Definition lowned_set l ls :=
