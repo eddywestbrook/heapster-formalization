@@ -395,6 +395,7 @@ apply H. auto.
     Qed.
    *)
 
+  (* when_perm is monotone wrt the permission argument *)
   Lemma when_monotone n p1 p2 : p1 <= p2 -> when_perm n p1 <= when_perm n p2.
   Proof.
     constructor; intros.
@@ -410,6 +411,12 @@ apply H. auto.
       destruct H0. apply H; assumption.
     - destruct H0. split; [ | assumption ].
       apply H; assumption.
+  Qed.
+
+  (* Proper instance for the monotonicity of when *)
+  Global Instance Proper_when n : Proper (lte_perm ==> lte_perm) (when_perm n).
+  Proof.
+    repeat intro; apply when_monotone; assumption.
   Qed.
 
 
@@ -465,6 +472,32 @@ apply H. auto.
     change (statusOf_lte (Some current) (lifetime (lget y) l)).
     rewrite H2; simpl; trivial.
   Qed.
+
+
+  (* after_perm is monotone wrt the permission argument *)
+  Lemma after_monotone n p1 p2 : p1 <= p2 -> after_perm n p1 <= after_perm n p2.
+  Proof.
+    constructor; intros.
+    - intro. destruct H0. apply H; [ | apply H1 ]; assumption.
+    - destruct H0. destruct H1 as [? [? [? ?]]].
+      split; [ assumption | ].
+      split; [ intro; apply H; auto | ].
+      split; [ | intro; apply H; auto ].
+      intros. destruct (current_lte_or_eq _ H2).
+      + apply H; [ auto | ]. apply H4; [ | assumption ].
+        intro. rewrite H8 in H9. discriminate H9.
+      + eapply pre_respects; eauto.
+    - destruct H0. destruct H1 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+      right; split; [ | split ]; try assumption.
+      apply H; assumption.
+    - destruct H0. split; [ apply H | ]; assumption.
+  Qed.
+
+  Global Instance Proper_after n : Proper (lte_perm ==> lte_perm) (after_perm n).
+  Proof.
+    repeat intro; apply after_monotone; assumption.
+  Qed.
+
 
   Lemma separate_when_after l p : when_perm l p ⊥ after_perm l p.
   Proof.
@@ -701,7 +734,7 @@ apply H. auto.
 
 
   (***
-   *** Lifetime ownership permission set
+   *** Lifetime typing rules
    ***)
 
 

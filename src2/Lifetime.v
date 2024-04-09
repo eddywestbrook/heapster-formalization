@@ -67,6 +67,16 @@ Proof.
   apply statusOf_lte_eq. apply finished_greatest.
 Qed.
 
+Lemma current_lte_or_eq s : statusOf_lte (Some current) s ->
+                            s = Some current \/ s = Some finished.
+Proof.
+  destruct s; [ destruct s | ]; intros.
+  - left; reflexivity.
+  - right; reflexivity.
+  - simpl in H. elimtype False; assumption.
+Qed.
+
+
 (** [s1] subsumes [s2], now with unstarted lifetimes (None) *)
 Definition statusOf_subsumes (s1 s2 : option status) : Prop :=
   match s1, s2 with
