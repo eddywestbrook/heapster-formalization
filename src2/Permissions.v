@@ -529,6 +529,27 @@ Section Permissions.
     constructor; repeat intro; auto.
   Qed.
 
+  (* Remove the guarantee of a permission, replacing it with equality *)
+  Program Definition no_guar (p : perm) : perm :=
+    {|
+      pre := pre p;
+      rely := rely p;
+      guar := eq;
+      inv := inv p
+    |}.
+  Next Obligation.
+    eapply pre_respects; eassumption.
+  Qed.
+  Next Obligation.
+    eapply inv_rely; eassumption.
+  Qed.
+
+  Global Instance Proper_no_guar : Proper (lte_perm ==> lte_perm) no_guar.
+  Proof.
+    constructor; intros; try (apply H; assumption).
+    inversion H1; reflexivity.
+  Qed.
+
 
   (*
   Program Definition join_perm' (ps: perm -> Prop) (H: exists p, ps p) : perm :=
@@ -1691,6 +1712,9 @@ Section Permissions.
       + etransitivity; [ | eassumption ].
         apply H; assumption.
   Qed.
+
+  (* The permission set built from removing the guarantees of perms in P *)
+  Definition no_guar_Perms P : Perms := mapPerms no_guar P.
 
 
   (** ** Separating conjunction for permission sets *)
