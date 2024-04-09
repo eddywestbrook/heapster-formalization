@@ -1550,6 +1550,7 @@ Section Permissions.
     eexists; split; [ | etransitivity ]; eassumption.
   Qed.
 
+
   (** ** Permission set ordering *)
   (** Defined as superset. *)
   Definition lte_Perms (P Q : Perms) : Prop :=
@@ -1667,6 +1668,30 @@ Section Permissions.
   Proof.
     repeat intro; subst. apply H. eapply Perms_upwards_closed; eauto.
   Qed.
+
+
+  (* Map a function over a permission set to build a new one *)
+  Definition mapPerms (f : perm -> perm) (P : Perms) : Perms :=
+    mkPerms (fun y => exists x, in_Perms P x /\ y = f x).
+
+  (* Mapping a mkPerms set with a monotonic function yields what you would
+  expect *)
+  Lemma map_mkPerms f Ps `{Proper _ (lte_perm ==> lte_perm) f} :
+    eq_Perms (mapPerms f (mkPerms Ps))
+      (mkPerms (fun p => exists p', Ps p' /\ p = f p')).
+  Proof.
+    split; repeat intro.
+    - destruct H0 as [p' [[p'' [? ?]] ?]]; subst; simpl.
+      exists (f p''). split; [ | assumption ].
+      exists p''. split; [ | reflexivity ].
+      exists p''. split; [ assumption | reflexivity ].
+    - destruct H0 as [p1 [[p2 [[p3 [? ?]] ?]] ?]]; subst.
+      exists (f p3); split.
+      + exists p3. split; [ assumption | reflexivity ].
+      + etransitivity; [ | eassumption ].
+        apply H; assumption.
+  Qed.
+
 
   (** ** Separating conjunction for permission sets *)
   Program Definition sep_conj_Perms (P Q : Perms) : Perms :=
