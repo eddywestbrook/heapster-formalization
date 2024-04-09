@@ -71,7 +71,13 @@ Section bisim.
     p ∈ Q r1 r2 ->
     sbuter_gen sbuter p Q (Ret r1) c1 (Ret r2) c2
   | sbuter_gen_err t1 c1 c2 :
-      sbuter_gen sbuter p Q t1 c1 (throw tt) c2
+    sbuter_gen sbuter p Q t1 c1 (throw tt) c2
+  | sbuter_gen_sep_step t1 c1 t2 c2 p' :
+    pre p (c1, c2) ->
+    inv p (c1, c2) ->
+    sep_step p p' ->
+    sbuter_gen sbuter p' Q t1 c1 t2 c2 ->
+    sbuter_gen sbuter p Q t1 c1 t2 c2
 
   | sbuter_gen_tau_L t1 c1 t2 c2 :
     pre p (c1, c2) ->
@@ -89,6 +95,9 @@ Section bisim.
     sbuter p Q t1 c1 t2 c2 ->
     sbuter_gen sbuter p Q (Tau t1) c1 (Tau t2) c2
 
+  (* NOTE: even though sbuter_gen_sep_step already allows sep_step to change the
+  input permission, we include sep_step on the modify steps in case the
+  precondition of the input permission holds before but not after the modify *)
   | sbuter_gen_modify_L f k c1 t2 c2 p' :
     pre p (c1, c2) ->
     inv p (c1, c2) ->
@@ -111,38 +120,38 @@ Section bisim.
     sbuter p' Q (k1 c1) (f1 c1) (k2 c2) (f2 c2) ->
     sbuter_gen sbuter p Q (vis (Modify f1) k1) c1 (vis (Modify f2) k2) c2
 
-  | sbuter_gen_choice_L k c1 t2 c2 p' :
+  | sbuter_gen_choice_L k c1 t2 c2 :
     pre p (c1, c2) ->
     inv p (c1, c2) ->
-    sep_step p p' ->
-    (forall b, sbuter_gen sbuter p' Q (k b) c1 t2 c2) ->
+    (forall b, sbuter_gen sbuter p Q (k b) c1 t2 c2) ->
     sbuter_gen sbuter p Q (vis Or k) c1 t2 c2
-  | sbuter_gen_choice_R t1 c1 k c2 p' :
+  | sbuter_gen_choice_R t1 c1 k c2 :
     pre p (c1, c2) ->
     inv p (c1, c2) ->
-    sep_step p p' ->
-    (forall b, sbuter_gen sbuter p' Q t1 c1 (k b) c2) ->
+    (forall b, sbuter_gen sbuter p Q t1 c1 (k b) c2) ->
     sbuter_gen sbuter p Q t1 c1 (vis Or k) c2
-  | sbuter_gen_choice k1 c1 k2 c2 p' :
+  | sbuter_gen_choice k1 c1 k2 c2 :
     pre p (c1, c2) ->
     inv p (c1, c2) ->
-    sep_step p p' ->
-    (forall b1, exists b2, sbuter p' Q (k1 b1) c1 (k2 b2) c2) ->
-    (forall b2, exists b1, sbuter p' Q (k1 b1) c1 (k2 b2) c2) ->
+    (forall b1, exists b2, sbuter p Q (k1 b1) c1 (k2 b2) c2) ->
+    (forall b2, exists b1, sbuter p Q (k1 b1) c1 (k2 b2) c2) ->
     sbuter_gen sbuter p Q (vis Or k1) c1 (vis Or k2) c2
   .
 
   Lemma sbuter_gen_mon {R1 R2} : monotone6 (@sbuter_gen R1 R2).
   Proof.
     repeat intro. induction IN; subst; try solve [econstructor; eauto]; auto.
-    econstructor 11; eauto; intros.
-    - destruct (H2 b1). eexists; eauto.
-    - destruct (H3 b2). eexists; eauto.
+    econstructor 12; eauto; intros.
+    - destruct (H1 b1). eexists; eauto.
+    - destruct (H2 b2). eexists; eauto.
   Qed.
   #[local] Hint Resolve sbuter_gen_mon : paco.
 
+  (* Stuttering Bisimulation Up To Error on the Right *)
   Definition sbuter {R1 R2} := paco6 (@sbuter_gen R1 R2) bot6.
 
+  (* Bisimulation wrt input permission p implies that either the precondition
+  and invariant of p hold OR the RHS computation is an error *)
   Lemma sbuter_gen_pre_inv {R1 R2} r p (Q : R1 -> R2 -> Perms) t s c1 c2 :
     sbuter_gen r p Q t c1 s c2 ->
     s = throw tt \/ (pre p (c1, c2) /\ inv p (c1, c2)).
@@ -150,6 +159,20 @@ Section bisim.
     inversion 1; auto.
   Qed.
 
+  (* The input permission of sbuter can be strenghtened using sep_step, as long
+  as the precondition is preserved *)
+  Lemma sbuter_sep_step_left {R1 R2} p p' (Q : R1 -> R2 -> Perms) t s c1 c2 :
+    sep_step p p' -> pre p (c1,c2) ->
+    sbuter p' Q t c1 s c2 -> sbuter p Q t c1 s c2.
+  Proof.
+    intros. punfold H1. pstep.
+    destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H1) as [? | [? ?]];
+      [ subst; constructor | ].
+    eapply sbuter_gen_sep_step; eauto.
+    eapply sep_step_inv; eassumption.
+  Qed.
+
+  (* The output permission set of sbuter can be weakened to a larger set *)
   Lemma sbuter_lte {R1 R2} p Q Q' (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2 :
     sbuter p Q t c1 s c2 -> (forall r1 r2, Q r1 r2 ⊨ Q' r1 r2) -> sbuter p Q' t c1 s c2.
   Proof.
@@ -157,12 +180,15 @@ Section bisim.
     punfold Htyping. pstep.
     induction Htyping; pclearbot; try solve [econstructor; eauto].
     - constructor; eauto. apply Hlte. auto.
-    - econstructor 11; eauto; intros.
-      + destruct (H2 b1). eexists. right. eapply CIH; eauto. pclearbot. apply H4.
-      + destruct (H3 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H4.
+    - econstructor 12; eauto; intros.
+      + destruct (H1 b1). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
+      + destruct (H2 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
   Qed.
 
-  Lemma sbuter_lte_left {R1 R2} p p' Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2 :
+  (* The input permission of sbuter can be strengthened to a stronger one *)
+  (*
+  Lemma sbuter_lte_left {R1 R2} p p' Q (t : itree (sceE config) R1)
+    (s : itree (sceE specConfig) R2) c1 c2 :
     pre p' (c1, c2) -> inv p' (c1, c2) ->
     sbuter p Q t c1 s c2 -> p <= p' -> sbuter p' Q t c1 s c2.
   Proof.
@@ -171,6 +197,10 @@ Section bisim.
     revert p' Hpre Hinv Hlte; induction Htyping; intros;
       pclearbot; try solve [econstructor; eauto].
     - constructor; try assumption. eapply Perms_upwards_closed; eassumption.
+    - eapply sbuter_gen_sep_step; try assumption.
+      + eapply sep_step_lte; eassumption.
+      + apply IHHtyping.
+        * split; [ apply I | ].
     - econstructor; try assumption.
       + eapply guar_inc; eassumption.
       + eapply sep_step_lte; eassumption.
@@ -200,6 +230,7 @@ Section bisim.
              symmetry; eapply separate_bigger_invperm. assumption.
         * apply lte_r_sep_conj_perm.
   Admitted.
+   *)
 
   (*
   Lemma bisim_spred_lte {R1 R2} (spred spred' : config * specConfig -> Prop) p Q
@@ -295,7 +326,7 @@ Section bisim.
   Proof.
     repeat intro. pcofix CIH. pstep.
     rewrite (@rewrite_spin _ R1). rewrite (@rewrite_spin _ R2).
-    econstructor 5; eauto.
+    econstructor 6; eauto.
   Qed.
 
   Lemma typing_top {R1 R2} Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) :
@@ -309,9 +340,9 @@ Section bisim.
   Proof.
     revert p Q t s c1 c2. pcofix CIH. intros. pstep. punfold H0.
     induction H0; pclearbot; try solve [econstructor; simpl; eauto].
-    econstructor 11; eauto; intros.
-    - destruct (H2 b1). eexists. right. eapply CIH; pclearbot; apply H4.
-    - destruct (H3 b2). eexists. right. eapply CIH; pclearbot; apply H4.
+    econstructor 12; eauto; intros.
+    - destruct (H1 b1). eexists. right. eapply CIH; pclearbot; apply H3.
+    - destruct (H2 b2). eexists. right. eapply CIH; pclearbot; apply H3.
   Qed.
 
   Lemma typing_bottom {R1 R2} P Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) :
@@ -339,6 +370,11 @@ Section bisim.
     - do 2 rewritebisim @bind_ret_l. specialize (Htyping2 _ _ _ c1 c2 H1 H H0).
       eapply paco6_mon; eauto.
     - rewrite throw_bind. pstep. constructor.
+    - apply sbuter_gen_pre_inv in Htyping1.
+      destruct Htyping1 as [? | [? ?]];
+        [ subst; rewrite throw_bind; pstep; constructor | ].
+      specialize (IHHtyping1 H2 H3 Htyping2). punfold IHHtyping1.
+      pstep. unshelve eapply sbuter_gen_sep_step; assumption.
     - rewritebisim @bind_tau.
       specialize (IHHtyping1 Hpre Hinv Htyping2). punfold IHHtyping1.
       pstep. constructor; auto.
@@ -346,36 +382,42 @@ Section bisim.
       specialize (IHHtyping1 Hpre Hinv Htyping2). punfold IHHtyping1.
       pstep. constructor; auto.
     - do 2 rewritebisim @bind_tau. pclearbot.
-      pstep. constructor 5; auto. right. eapply CIH; eauto.
+      pstep. constructor 6; auto. right. eapply CIH; eauto.
     - rewritebisim @bind_vis. apply sbuter_gen_pre_inv in Htyping1.
       destruct Htyping1 as [? | [? ?]]; subst.
       + rewrite throw_bind. pstep. constructor.
-      + specialize (IHHtyping1 H3 H4 Htyping2). punfold IHHtyping1. pstep. econstructor; eauto.
+      + specialize (IHHtyping1 H3 H4 Htyping2). punfold IHHtyping1. pstep.
+        eapply sbuter_gen_modify_L; eauto.
     - rewritebisim @bind_vis. apply sbuter_gen_pre_inv in Htyping1.
       destruct Htyping1 as [? | [? ?]]; subst.
-      + pstep. econstructor; eauto. rewrite H3. rewrite throw_bind. constructor.
-      + specialize (IHHtyping1 H3 H4 Htyping2). punfold IHHtyping1. pstep. econstructor; eauto.
+      + pstep. eapply sbuter_gen_modify_R; eauto. rewrite H3.
+        rewrite throw_bind. constructor.
+      + specialize (IHHtyping1 H3 H4 Htyping2). punfold IHHtyping1. pstep.
+        eapply sbuter_gen_modify_R; eauto.
     - do 2 rewritebisim @bind_vis. pclearbot.
       pose proof H3. punfold H3.
-      pstep. econstructor 8; eauto.
+      pstep. econstructor 9; eauto.
       destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H3) as [? | [? ?]]; eauto.
       rewrite H5. rewrite throw_bind. left. pstep. constructor.
-    - rewritebisim @bind_vis. pstep. econstructor; eauto. intros.
-      destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ (H2 b)) as [? | [? ?]].
-      + rewrite H4. rewrite throw_bind. constructor.
-      + specialize (H3 b H4 H5 Htyping2). punfold H3.
-    - rewritebisim @bind_vis. pstep. econstructor; eauto. intros.
-      destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ (H2 b)) as [? | [? ?]].
-      + rewrite H4. rewrite throw_bind. constructor.
-      + specialize (H3 b H4 H5 Htyping2). punfold H3.
-    - do 2 rewritebisim @bind_vis. pclearbot. pstep. econstructor 11; eauto; intros.
-      + specialize (H2 b1). destruct H2. pclearbot.
-        punfold H2. destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H2) as [? | [? ?]].
-        * exists x. left. pstep. rewrite H4. rewrite throw_bind. econstructor; eauto.
+    - rewritebisim @bind_vis. pstep.
+      eapply sbuter_gen_choice_L; eauto. intros.
+      destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ (H1 b)) as [? | [? ?]].
+      + rewrite H3. rewrite throw_bind. constructor.
+      + specialize (H2 b H3 H4 Htyping2). punfold H2.
+    - rewritebisim @bind_vis. pstep.
+      eapply sbuter_gen_choice_R; eauto. intros.
+      destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ (H1 b)) as [? | [? ?]].
+      + rewrite H3. rewrite throw_bind. constructor.
+      + specialize (H2 b H3 H4 Htyping2). punfold H2.
+    - do 2 rewritebisim @bind_vis. pclearbot. pstep.
+      econstructor 12; eauto; intros.
+      + specialize (H1 b1). destruct H1. pclearbot.
+        punfold H1. destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H1) as [? | [? ?]].
+        * exists x. left. pstep. rewrite H3. rewrite throw_bind. econstructor; eauto.
         * eexists. right. eapply CIH; eauto. pstep; eauto.
-      + specialize (H3 b2). destruct H3. pclearbot.
-        punfold H3. destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H3) as [? | [? ?]].
-        * exists x. left. pstep. rewrite H4. rewrite throw_bind. econstructor; eauto.
+      + specialize (H2 b2). destruct H2. pclearbot.
+        punfold H2. destruct (sbuter_gen_pre_inv _ _ _ _ _ _ _ H2) as [? | [? ?]].
+        * exists x. left. pstep. rewrite H3. rewrite throw_bind. econstructor; eauto.
         * eexists. right. eapply CIH; eauto. pstep; eauto.
   Qed.
 
@@ -407,6 +449,12 @@ Section bisim.
       + split; [ | split ]; assumption.
       + do 2 eexists. split; [| split; [| split]]; eauto.
       reflexivity.
+    - eapply sbuter_gen_sep_step.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + apply sep_step_sep_conj_l; eassumption.
+      + apply IHHsbuter; try assumption.
+        eapply sep_step_sep; eassumption.
     - apply sbuter_gen_pre_inv in Hsbuter.
       destruct Hsbuter as [? | [? ?]]; [subst; constructor |].
       constructor.
@@ -436,8 +484,7 @@ Section bisim.
           eapply sep_r; eassumption.
         * eapply inv_rely; try eassumption.
           eapply sep_r; eassumption.
-    - apply sbuter_gen_pre_inv in Hsbuter.
-      econstructor.
+    - apply sbuter_gen_pre_inv in Hsbuter. eapply sbuter_gen_modify_R.
       + split; assumption.
       + split; [ | split ]; assumption.
       + apply t_step; left; assumption.
@@ -449,7 +496,7 @@ Section bisim.
           eapply sep_r; eassumption.
         * eapply inv_rely; try eassumption.
           eapply sep_r; eassumption.
-    - econstructor 8.
+    - econstructor 9.
       + split; assumption.
       + split; [ | split ]; assumption.
       + apply t_step; left; assumption.
@@ -462,134 +509,46 @@ Section bisim.
         * respects. apply Hsep; auto.
         * apply Hsep in H1; auto. eapply inv_rely; eauto.
         * auto.
-    - econstructor 9.
+    - eapply sbuter_gen_choice_L.
       + split; assumption.
       + split; [ | split ]; assumption.
-      + apply sep_step_sep_conj_l; eassumption.
-      + intros. eapply H3; auto. apply H1; auto.
-    - econstructor 10.
+      + intros. eapply H2; auto.
+    - eapply sbuter_gen_choice_R.
       + split; assumption.
       + split; [ | split ]; assumption.
-      + apply sep_step_sep_conj_l; eassumption.
-      + intros. eapply H3; auto. apply H1; auto.
-    - econstructor 11; eauto.
-      split; assumption.
-      split; [ | split]; assumption.
-      2: { intros. specialize (H2 b1). destruct H2 as (b2 & H2). pclearbot. exists b2.
-           pose proof H2 as Hsbuter.
-           punfold Hsbuter. apply sbuter_gen_pre_inv in Hsbuter.
-           destruct Hsbuter; [rewrite H4; left; pstep; constructor |].
-           right. eapply CIH. 5: apply H2. all: eauto. apply H1; auto.
-      }
-      2: { intros. specialize (H3 b2). destruct H3 as (b1 & H3). pclearbot. exists b1.
-           pose proof H3 as Hsbuter.
-           punfold Hsbuter. apply sbuter_gen_pre_inv in Hsbuter.
-           destruct Hsbuter; [rewrite H4; left; pstep; constructor |].
-           right. eapply CIH. 5: apply H3. all: eauto. apply H1; auto.
-      }
-      apply sep_step_sep_conj_l; auto.
+      + intros. eapply H2; auto.
+    - eapply sbuter_gen_choice.
+      + split; assumption.
+      + split; [ | split ]; assumption.
+      + intros. specialize (H1 b1). destruct H1 as (b2 & H1). pclearbot. exists b2.
+        pose proof H1 as Hsbuter.
+        punfold Hsbuter.
+      + intros. specialize (H2 b2). destruct H2 as (b1 & H2). pclearbot. exists b1.
+        pose proof H2 as Hsbuter.
+        punfold Hsbuter.
   Qed.
 
-  (*
-  Lemma sbuter_frame {R1 R2} p r p' Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
-    pre p' (c1, c2) ->
-    inv p' (c1, c2) ->
-    r ∈ R -> p ⊥ r ->
-    p ** r <= p' ->
-    sbuter p Q t c1 s c2 ->
-    sbuter p' (fun r1 r2 => Q r1 r2 * R) t c1 s c2.
+
+  (* The input permission of sbuter can be strengthened to a stronger one. This
+  falls out as a consequence of the frame rule *)
+  Lemma sbuter_lte_left {R1 R2} p p' Q (t : itree (sceE config) R1)
+    (s : itree (sceE specConfig) R2) c1 c2 :
+    pre p' (c1, c2) -> inv p' (c1, c2) ->
+    sbuter p Q t c1 s c2 -> p <= p' -> sbuter p' Q t c1 s c2.
   Proof.
-    revert p r p' Q R t s c1 c2. pcofix CIH. rename r into r0.
-    intros p r p' Q R t s c1 c2 Hpre Hinv Hr Hsep Hlte Hsbuter. pstep. punfold Hsbuter.
-    revert p' Hlte Hpre Hinv. generalize dependent r.
-    induction Hsbuter; intros; pclearbot; try solve [econstructor; eauto].
-    - constructor; auto. eapply Perms_upwards_closed; eauto.
-      do 2 eexists. split; [| split; [| split]]; eauto.
-      reflexivity.
-    - apply sbuter_gen_pre_inv in Hsbuter.
-      destruct Hsbuter as [? | [? ?]]; [subst; constructor |].
-      constructor 6 with (p':= p' ** r ** invperm (inv  p'0)); eauto.
-      + apply Hlte; auto. constructor. left. auto.
-      + rewrite (sep_conj_perm_commut (p' ** r)).
-        apply (sep_step_lte _ _ _ Hlte).
-        apply sep_step_sep_conj_l; assumption.
-      + eapply IHHsbuter; eauto.
-        * eapply sep_step_sep; eassumption.
-        * apply lte_l_sep_conj_perm.
-        *
-        {
-          split.
-          split; auto.
-          apply Hlte in Hpre. destruct Hpre as (? & ?). respects.
-          eapply inv_inc in Hinv; eauto. destruct Hinv as (? & ? & ?). apply H9; auto.
-
-          auto.
-
-          cbn. auto.
-        }
-        {
-          split; [| split]; auto.
-          - split; [| split]; auto. apply Hlte. apply Hinv.
-        * apply H1. apply Hlte in Hpre. apply Hpre.
-    - econstructor; eauto.
-      + apply Hlte. constructor. left. auto.
-      + eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; eauto.
-        apply Hlte in Hpre. apply Hpre.
-      + apply sbuter_gen_pre in Hsbuter. destruct Hsbuter; [rewrite H2; constructor |].
-        eapply IHHsbuter; eauto. reflexivity.
-        split; [| split]; auto.
-        * apply Hlte in Hpre. destruct Hpre as (? & ? & ?). respects.
-          apply H5. auto.
-        * apply H1. apply Hlte in Hpre. apply Hpre.
-    - econstructor 8; eauto.
-      3: { pose proof H2 as Hsbuter.
-           punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
-           destruct Hsbuter; [rewrite H3; left; pstep; constructor |].
-           right. eapply CIH. 4: apply H2. 2: eauto. 2: reflexivity.
-           apply Hlte in Hpre. destruct Hpre as (? & ? & ?).
-           split; [| split]; auto.
-           respects. apply H6. auto.
-      }
-      + apply Hlte. constructor. left. auto.
-      + eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; auto.
-        apply Hlte in Hpre. apply Hpre.
-    - econstructor; eauto.
-      + eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; eauto.
-        apply Hlte in Hpre. apply Hpre.
-      + intros. specialize (H1 b).
-        apply sbuter_gen_pre in H1. destruct H1; [subst; constructor |].
-        eapply H2; eauto. reflexivity.
-        apply Hlte in Hpre. destruct Hpre as (? & ? & ?).
-        split; [| split]; auto.
-    - econstructor; eauto.
-      + eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; eauto.
-        apply Hlte in Hpre. apply Hpre.
-      + intros. specialize (H1 b).
-        apply sbuter_gen_pre in H1. destruct H1; [rewrite H1; constructor |].
-        eapply H2; eauto. reflexivity.
-        apply Hlte in Hpre. destruct Hpre as (? & ? & ?).
-        split; [| split]; auto.
-    - econstructor 11; eauto.
-      2: { intros. specialize (H1 b1). destruct H1 as (b2 & H1). pclearbot. exists b2.
-           pose proof H1 as Hsbuter.
-           punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
-           destruct Hsbuter; [rewrite H3; left; pstep; constructor |].
-           right. eapply CIH. 4: apply H1. 2: eauto. 2: reflexivity.
-           apply Hlte in Hpre. destruct Hpre as (? & ? & ?).
-           split; [| split]; auto.
-      }
-      2: { intros. specialize (H2 b2). destruct H2 as (b1 & H2). pclearbot. exists b1.
-           pose proof H2 as Hsbuter.
-           punfold Hsbuter. apply sbuter_gen_pre in Hsbuter.
-           destruct Hsbuter; [rewrite H3; left; pstep; constructor |].
-           right. eapply CIH. 4: apply H2. 2: eauto. 2: reflexivity.
-           apply Hlte in Hpre. destruct Hpre as (? & ? & ?).
-           split; [| split]; auto.
-      }
-      eapply sep_step_lte; eauto. apply sep_step_sep_conj_l; auto.
-      apply Hlte in Hpre. apply Hpre.
+    intros.
+    pose proof (sep_step_lte p p p' H2 (reflexivity _)) as H3.
+    rewrite sep_conj_perm_commut in H3.
+    eapply sbuter_sep_step_left; [ apply H3 | eassumption | ].
+    eapply sbuter_lte;
+      [ eapply (sbuter_frame _ _ _
+                  (singleton_Perms (invperm (inv p')))) | ]; try eassumption.
+    - apply I.
+    - simpl; reflexivity.
+    - symmetry; apply separate_bigger_invperm; assumption.
+    - intros; apply lte_l_sep_conj_Perms.
   Qed.
-   *)
+
 
   Lemma typing_frame {R1 R2} P Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2):
     typing P Q t s ->
@@ -609,95 +568,6 @@ Section bisim.
         etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
   Qed.
 
-  (*
-  Lemma sbuter_frame' {R1 R2} p r Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
-    pre (p ** r) (c1, c2) ->
-    inv (p ** r) (c1, c2) ->
-    r ∈ R ->
-    sbuter p Q t c1 s c2 ->
-    sbuter (p ** r) (fun r1 r2 => Q r1 r2 * R) t c1 s c2.
-  Proof.
-    revert p r Q R t s c1 c2. pcofix CIH. rename r into r0.
-    intros p r Q R t s c1 c2 Hpre Hinv Hr Hsbuter. pstep. punfold Hsbuter.
-    revert Hr Hpre Hinv. generalize dependent r.
-    induction Hsbuter; intros; pclearbot; try solve [econstructor; eauto].
-    - constructor; auto.
-      apply sep_conj_Perms_perm; auto. apply Hinv.
-    - apply sbuter_gen_pre_inv in Hsbuter. destruct Hsbuter; [subst; constructor |].
-      destruct H3.
-      econstructor; eauto.
-      3: {
-        destruct Hinv as (Hinvp & Hinvr & Hsep).
-        eapply IHHsbuter; eauto.
-        * split; auto.
-          eapply pre_respects. apply Hsep; eauto. apply Hpre.
-        * split; [| split]; auto.
-          2: { apply H2. apply Hsep. }
-          eapply inv_rely; eauto. apply Hsep; eauto.
-      }
-      + constructor. left. auto.
-      + apply sep_step_frame; auto. apply Hinv.
-    -
-  Admitted.
-
-
-  Lemma sbuter_frame {R1 R2} p r p' Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2:
-    pre p' (c1, c2) ->
-    inv p' (c1, c2) ->
-    r ∈ R ->
-    p ⊥ r ->
-    sep_step p' (p ** r) ->
-    sbuter p Q t c1 s c2 ->
-    sbuter p' (fun r1 r2 => Q r1 r2 * R) t c1 s c2.
-  Proof.
-    intros. eapply sbuter_lte'; eauto.
-    apply sbuter_frame'; eauto. admit.
-  Qed.
-   *)
-
-
-  (*
-  (** * [no_errors] *)
-  Variant no_errors_gen {R C : Type} no_errors (c : C) : itree (sceE C) R -> Prop :=
-  | no_errors_ret : forall r, no_errors_gen no_errors c (Ret r)
-  | no_errors_tau : forall t, no_errors c t -> no_errors_gen no_errors c (Tau t)
-  | no_errors_modify : forall f k,
-      no_errors (f c) (k c) ->
-      no_errors_gen no_errors c (vis (Modify f) k)
-  | no_errors_choice : forall k,
-      (forall b, no_errors c (k b)) ->
-      no_errors_gen no_errors c (vis Or k)
-  .
-  Lemma no_errors_gen_mon {R C} : monotone2 (@no_errors_gen R C).
-  Proof.
-    repeat intro. inversion IN; subst; try solve [constructor; auto].
-  Qed.
-  #[local] Hint Resolve no_errors_gen_mon : paco.
-
-  Definition no_errors {R C : Type} :=
-    paco2 (@no_errors_gen R C) bot2.
-
-  Lemma sbuter_no_errors {R1 R2} Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) p c1 c2 :
-    sbuter p Q t c1 s c2 ->
-    no_errors c2 s ->
-    no_errors c1 t.
-  Proof.
-    revert Q t s p c1 c2. pcofix CIH. intros Q t s p c1 c2 Htyping Hs. pstep.
-    punfold Htyping.
-    induction Htyping;
-      try solve [constructor; eauto];
-      pinversion Hs;
-      try (match goal with
-           | [H : existT _ _ _ = existT _ _ _ |- _] => apply inj_pair2 in H
-           end); subst; eauto;
-        try solve [constructor; eauto].
-    - subst. apply (H2 true). apply H4.
-    - constructor. intros. right. destruct (H1 b). eapply CIH.
-      + destruct H3; eauto. inversion b0.
-      + inversion Hs. apply inj_pair2 in H5; subst.
-        specialize (H6 x). pclearbot. eauto.
-  Qed.
-*)
 
   Global Instance Proper_eq_Perms_typing {R1 R2} :
     Proper (eq_Perms ==>
