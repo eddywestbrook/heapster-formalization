@@ -1638,6 +1638,14 @@ Section Permissions.
   (* The join of two permission sets *)
   Definition join_Perms2 P Q : Perms := join_Perms (fun R => R = P \/ R = Q).
 
+  (* A permission is in join_Perms2 P Q iff it is in P and Q *)
+  Lemma join_Perms2_elem P Q p : p ∈ join_Perms2 P Q <-> p ∈ P /\ p ∈ Q.
+  Proof.
+    split; repeat intro.
+    - split; [ apply (H P); left | apply (H Q); right ]; reflexivity.
+    - destruct H. destruct H0; subst; assumption.
+  Qed.
+
 
   (** Complete meet of Perms sets = union *)
   Program Definition meet_Perms (Ps : Perms -> Prop) : Perms :=
