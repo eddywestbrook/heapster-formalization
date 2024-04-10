@@ -28,6 +28,22 @@ Class Lens (A B:Type) : Type :=
   lPutPut: forall a b b', lput (lput a b) b' = lput a b'
   }.
 
+Global Program Instance Lens_fst (A B C : Type) `{Lens A C} : Lens (A * B) C :=
+  {|
+    lget x := lget (fst x);
+    lput x y := (lput (fst x) y, snd x);
+  |}.
+Next Obligation.
+  rewrite lGetPut. reflexivity.
+Qed.
+Next Obligation.
+  rewrite lPutGet. reflexivity.
+Qed.
+Next Obligation.
+  rewrite lPutPut. reflexivity.
+Qed.
+
+
 (** * [replace_list_index] *)
 (** A function for replacing an element in a list, growing the list if needed. *)
 Fixpoint replace_list_index {A : Type} (l : list A) (n : nat) (new : A) : list A :=
