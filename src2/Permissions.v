@@ -1613,7 +1613,7 @@ Section Permissions.
     etransitivity; eassumption.
   Qed.
 
-  (* The complete join of a set of permission sets *)
+  (* The complete join / least upper bound of a set of permission sets *)
   Program Definition join_Perms (Ps : Perms -> Prop) : Perms :=
     {|
       in_Perms := fun p => forall P, Ps P -> p ∈ P
@@ -1621,13 +1621,17 @@ Section Permissions.
   Next Obligation.
     eapply Perms_upwards_closed; eauto.
   Qed.
+
+  (* If P is below any element of Ps then it is below its join *)
   Lemma lte_join_Perms : forall (Ps : Perms -> Prop) P,
-      Ps P ->
+      (exists Q, Ps Q /\ P ⊑ Q) ->
       P ⊑ join_Perms Ps.
   Proof.
-    repeat intro. apply H0. auto.
+    repeat intro. destruct H as [Q [? ?]]. apply H1. apply H0. assumption.
   Qed.
-  Lemma join_Perms_min : forall (Ps : Perms -> Prop) Q,
+
+  (* If Q is above all elements of Ps then it is above its join *)
+  Lemma join_Perms_max : forall (Ps : Perms -> Prop) Q,
       (forall P, Ps P -> P ⊑ Q) ->
       join_Perms Ps ⊑ Q.
   Proof.
@@ -1635,8 +1639,22 @@ Section Permissions.
     eapply H; eauto.
   Qed.
 
-  (* The join of two permission sets *)
+  (* The binary join of two permission sets *)
   Definition join_Perms2 P Q : Perms := join_Perms (fun R => R = P \/ R = Q).
+
+  (* If P is below either Q or R then it is below their binary join *)
+  Lemma lte_join_Perms2 P Q R : (P ⊑ Q \/ P ⊑ R) -> P ⊑ join_Perms2 Q R.
+  Proof.
+    intros [? | ?]; apply lte_join_Perms; [ exists Q | exists R ]; split;
+      solve [ assumption | left; reflexivity | right; reflexivity ].
+  Qed.
+
+  (* If R is above both P and Q then it is above their binary join *)
+  Lemma join_Perms2_max P Q R : P ⊑ R -> Q ⊑ R -> join_Perms2 P Q ⊑ R.
+  Proof.
+    intros; apply join_Perms_max; intros.
+    destruct H1; subst; assumption.
+  Qed.
 
   (* A permission is in join_Perms2 P Q iff it is in P and Q *)
   Lemma join_Perms2_elem P Q p : p ∈ join_Perms2 P Q <-> p ∈ P /\ p ∈ Q.
@@ -1702,6 +1720,13 @@ Section Permissions.
   (* Map a function over a permission set to build a new one *)
   Definition mapPerms (f : perm -> perm) (P : Perms) : Perms :=
     mkPerms (fun y => exists x, in_Perms P x /\ y = f x).
+
+  (* f p is in mapPerms f P iff p is in P *)
+  Lemma in_mapPerms f P p : in_Perms P p -> in_Perms (mapPerms f P) (f p).
+  Proof.
+    intros. exists (f p). split; [ | reflexivity ].
+    exists p. split; [ assumption | reflexivity ].
+  Qed.
 
   (* Mapping a mkPerms set with a monotonic function yields what you would
   expect *)
@@ -1862,6 +1887,18 @@ Section Permissions.
       + eapply Perms_upwards_closed; eauto.
         simpl. exists x, x0. split; [auto | split; [auto | ]]. split; auto. reflexivity.
   Qed.
+
+
+  (* The conjunction of a binary join is an upper bound on conjunctions with the
+  Perms sets being joined *)
+  Lemma lte_conj_join_Perms2 P Q R1 R2 : (P ⊑ Q * R1 \/ P ⊑ Q * R2) ->
+                                         P ⊑ Q * join_Perms2 R1 R2.
+  Proof.
+    repeat intro. destruct H0 as [ q [ r [? [? [? ?]]]]].
+    apply join_Perms2_elem in H1. destruct H1.
+    destruct H; apply H; exists q; exists r; auto.
+  Qed.
+
 
   (** Permission entailment, which we sometimes use instead of ordering. *)
   Definition entails_Perms P Q := Q ⊑ P.
