@@ -184,8 +184,8 @@ apply H. auto.
       (* I can end l if pred is satisfied and all children are finished *)
       guar x y :=
         x = y \/
-          y = (lput x (replace_list_index (lget x) l finished)) /\
-            pred y /\ (forall l', ls l' -> lifetime (lget x) l' = Some finished);
+          y = end_lt x l /\ pred y /\
+            (forall l', ls l' -> lifetime (lget x) l' = Some finished);
 
       (* l has at least been allocated, and if l is finished then so are all its
       children *)
@@ -199,7 +199,8 @@ apply H. auto.
     - destruct H; [ subst; assumption | ].
       destruct H0; [ subst; right; assumption | ].
       destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
-      right; subst. repeat rewrite lGetPut. repeat rewrite lPutPut.
+      right; subst. unfold end_lt, replace_lifetime in * |- *.
+      repeat rewrite lGetPut. repeat rewrite lPutPut.
       rewrite replace_list_index_idem.
       split; [ reflexivity | ].
       rewrite lPutPut in H3. rewrite lGetPut in H3.
@@ -209,13 +210,39 @@ apply H. auto.
   Qed.
   Next Obligation.
     destruct H as [? | [? [? ?]]]; subst; [ split; assumption | ].
+    unfold end_lt, replace_lifetime in * |- *.
     rewrite lGetPut.
     split; [ | apply all_lte_finish; try assumption;
                apply lte_current_lt_length; assumption ].
     unfold lifetime. rewrite nth_error_replace_list_index_eq. trivial.
   Qed.
 
+  (* Shinking the pred of an lowned permission decreases it in the ordering *)
+  Lemma lowned_monotone_pred l ls (pred1 pred2 : S -> Prop) :
+    (forall x, pred1 x -> pred2 x) ->
+    lowned_perm l ls pred1 <= lowned_perm l ls pred2.
+  Proof.
+    constructor; intros; try assumption.
+    destruct H1 as [? | [? [? ?]]]; [ subst; reflexivity | ].
+    right. split; [ | split ]; auto.
+  Qed.
 
+  (* Shrinking the pred of an lowned permission preserves separateness *)
+  Lemma lowned_sep_monotone_pred l ls (pred1 pred2 : S -> Prop) p :
+    (forall x, pred1 x -> pred2 x) ->
+    lowned_perm l ls pred2 ⊥ p ->
+    lowned_perm l ls pred1 ⊥ p.
+  Proof.
+    intros.
+    rewrite <- (sep_conj_self_invperm (lowned_perm l ls pred1)).
+    rewrite (eq_invperm (inv (lowned_perm l ls pred2)));
+      [ | split; intros; assumption ].
+    symmetry. rewrite sep_conj_perm_commut.
+    apply separate_antimonotone; [ symmetry; assumption | ].
+    apply lowned_monotone_pred; intros; auto.
+  Qed.
+
+  (* lowned l is separate from lalloc n when n > l *)
   Lemma separate_lowned_lalloc_perm l ls pred n :
     l < n -> lowned_perm l ls pred ⊥ lalloc_perm n.
   Proof.
@@ -227,7 +254,8 @@ apply H. auto.
       rewrite <- (H3 l); [ | assumption ].
       etransitivity; [ apply H2; eassumption | apply H4 ].
     - destruct H2; subst; [ reflexivity | ].
-      destruct H2 as [? [? ?]]. subst. destruct H0. split; [ | split ].
+      destruct H2 as [? [? ?]]. subst. destruct H0.
+      split; [ | split ]; unfold end_lt, replace_lifetime in * |- *.
       + rewrite lGetPut.
         apply Lifetimes_lte_update;
           [ apply lte_current_lt_length; assumption | apply finished_greatest ].
@@ -247,7 +275,7 @@ apply H. auto.
   Proof.
     intros. destruct H0. destruct H1.
     destruct H2 as [? | [? [? ?]]]; subst; [ reflexivity | ].
-    simpl. rewrite lGetPut.
+    simpl. unfold end_lt, replace_lifetime in * |- *. rewrite lGetPut.
     assert (l1 < length (lget x));
       [ apply lte_current_lt_length; assumption | ].
     unfold all_lte, lifetime.
@@ -519,6 +547,7 @@ apply H. auto.
   Proof.
     constructor; intros.
     - destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ]. subst. simpl.
+      unfold end_lt, replace_lifetime in * |- *.
       rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
       split; [ apply finished_greatest | ].
       destruct H1. left; apply (sep_l _ _ H); try assumption.
@@ -538,7 +567,7 @@ apply H. auto.
       assert (rely p x y).
       + apply (sep_l _ _ H); try assumption.
         right; split; [ | split ]; assumption.
-      + subst. simpl.
+      + subst. simpl. unfold end_lt, replace_lifetime in * |- *.
         rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
         split; [ apply finished_greatest | ].
         split; [ intro; eapply inv_rely; eassumption | ].
@@ -738,6 +767,12 @@ apply H. auto.
    ***)
 
 
+  (* The set of permissions when_perm l p for all p in P *)
+  Definition when l P := mapPerms (when_perm l) P.
+
+  (* The set of permissions after_perm l p for all p in P *)
+  Definition after l P := mapPerms (after_perm l) P.
+
   (* The permission set allowing allocation of lifetimes *)
   Definition lalloc := mkPerms (fun r => exists n, r = lalloc_perm n).
 
@@ -749,16 +784,114 @@ apply H. auto.
   Definition lowned_pre_set l ls :=
     mkPerms (fun r => exists pred, r = preperm pred ** lowned_perm l ls pred).
 
-  (* The set of permissions after_perm l p for all p in P *)
-  Definition after_set l P :=
-    mkPerms (fun r => exists p, in_Perms P p /\ r = after_perm l p).
-
   (* The lifetime ownership permission set, which says:
      1. We currently own lifetime l with sub-lifetimes in ls; and
      2. If we give back any permission in P, we can end l and get back Q *)
-  Definition lowned l ls P Q :=
-    join_Perms2
-      (lowned_set l ls)
-      (impl_Perms P (lowned_pre_set l ls * after_set l Q)).
+  Program Definition lowned l ls P Q :=
+    {|
+      in_Perms r :=
+        exists pred q,
+          lowned_perm l ls pred ** q <= r /\
+            lowned_perm l ls pred ⊥ q /\
+            (forall p,
+                p ∈ P ->
+                (forall x, inv (p ** q) x -> pre (p ** q) x -> pred (end_lt x l)) /\
+                lfinished_perm l ** (p ** q) ∈ Q)
+    |}.
+  Next Obligation.
+    exists H; exists H1.
+    split; [ etransitivity; eassumption | ].
+    split; assumption.
+  Qed.
+
+
+  (* The rule for splitting the lifetime of a permission *)
+  Lemma Perms_split_lt l ls p Q R :
+    singleton_Perms p * lowned l ls Q R
+      ⊨ when l (singleton_Perms p)
+        * lowned l ls (singleton_Perms p * Q) (singleton_Perms p * R).
+  Proof.
+    intros. intro pqr. intros. destruct H as [p' [qr [? [? [? ?]]]]].
+    simpl in H.
+    destruct H0 as [pred [q [? [? ?]]]].
+    exists (when_perm l p).
+    exists (lowned_perm l ls (pred /1\ pre p) **
+              ((invperm (inv qr) ** q) ** after_perm l p)).
+    assert (lowned_perm l ls (pred /1\ pre p) ⊥ q);
+      [ apply (lowned_sep_monotone_pred _ _ _ pred);
+        [ intros ? [? ?] | ]; assumption | ].
+    assert (lowned_perm l ls (pred /1\ pre p) ⊥ (invperm (inv qr) ** q)).
+    1: {
+      apply (lowned_sep_monotone_pred _ _ _ pred); [ intros ? [? ?]; assumption | ].
+      symmetry. apply separate_conj_assoc; [ | symmetry; assumption ].
+      apply separate_bigger_invperm; rewrite sep_conj_perm_commut; assumption.
+    }
+    assert (lowned_perm l ls (pred /1\ pre p)
+              ⊥ (invperm (inv qr) ** q) ** after_perm l p).
+    1: {
+      admit.
+    }
+    split; [ | split ].
+    - apply in_mapPerms; simpl; reflexivity.
+    - exists (pred /1\ pre p).
+      exists ((invperm (inv qr) ** q) ** after_perm l p).
+      split; [ reflexivity | ].
+      split; [ assumption | ].
+      intros. destruct H8 as [p1 [q1 [? [? [? ?]]]]].
+      split; [ intros; split | ].
+      + assert (p0 ∈ Q);
+          [ eapply Perms_upwards_closed;
+            [ apply H9
+            | etransitivity; [ eapply lte_r_sep_conj_perm | eassumption ] ] | ].
+        apply (proj1 (H4 p0 H14)).
+        * admit.
+        * admit.
+      + destruct H13.
+        eapply pre_inc.
+        * etransitivity; [ apply H8 | ].
+          etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
+        * destruct H12. assumption 
+
+        simpl in H12. simpl.
+        destruct H12 as [? [[[? [? ?]] [[? ?] ?]] ?]].
+        split; [ | split ].
+        * apply (inv_inc _ p0); [ | assumption ].
+          etransitivity; [ eapply lte_r_sep_conj_perm | eassumption ].
+        * assumption.
+        * 
+
+        assert (q1 <= p0); [ etransitivity; [ eapply lte_r_sep_conj_perm | eassumption ] | ].
+        split; [ apply H21; assumption | ].
+        split; [ 
+
+      split.
+      + intros. simpl in H9.
+        destruct H9 as [p' [q' [[p'' [[p''' [? ?]] ?]] [? [? ?]]]]]; subst.
+destruct H9.
+
+simpl.
+
+
+    unfold lowned in H0. rewrite join_Perms2_elem in H0. destruct H0.
+    exists (when_perm l p). exists (after_perm l p ** qr).
+    split; [ apply in_mapPerms; assumption | ].
+    unfold lowned. rewrite join_Perms2_elem.
+    split; split.
+    - eapply Perms_upwards_closed; [ eassumption | apply lte_r_sep_conj_perm ].
+    - simpl in H3. simpl. admit.
+    - admit.
+    - symmetry; rewrite sep_conj_perm_commut.
+      apply separate_conj_assoc; symmetry; [ | apply separate_when_after ].
+      
+
+destruct H0 as [q' [[pred ?] ?]]; subst.
+      simpl.
+
+
+    split. simpl.
+
+    simpl in H0.
+    simpl.
+
 
 End LifetimePerms.
