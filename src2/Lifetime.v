@@ -42,6 +42,7 @@ Definition statusOf_lte (s1 s2 : option status) : Prop :=
   | _, _ => True
   end.
 
+(* statusOf_lte is a preorder *)
 Global Instance statusOf_lte_preorder : PreOrder statusOf_lte.
 Proof.
   constructor; repeat intro; subst; auto.
@@ -57,16 +58,19 @@ Proof.
     try reflexivity; elimtype False; assumption.
 Qed.
 
+(* Finished is the greatest status *)
 Lemma finished_greatest s : statusOf_lte s (Some finished).
 Proof.
   destruct s as [[ | ] | ]; simpl; auto.
 Qed.
 
+(* If a status is at least finished then it equals finished *)
 Lemma finished_lte_eq s : statusOf_lte (Some finished) s -> s = Some finished.
 Proof.
   apply statusOf_lte_eq. apply finished_greatest.
 Qed.
 
+(* If s has at least started, then it is either current or finished *)
 Lemma current_lte_or_eq s : statusOf_lte (Some current) s ->
                             s = Some current \/ s = Some finished.
 Proof.
@@ -95,13 +99,21 @@ Proof.
   - destruct x, y, z; cbn in *; intuition; destruct s, s0; intuition.
 Qed.
 
+(* A lifetime state is a list of allocated lifetimes and their statuses *)
 Definition Lifetimes := list status.
 
+(* Get the status of a lifetime *)
 Definition lifetime : Lifetimes -> nat -> option status :=
   @nth_error status.
 
+(* Set the status of a lifetime *)
 Definition replace_lifetime (l : Lifetimes) (n : nat) (new : status) : Lifetimes :=
   replace_list_index l n new.
+
+(* End a lifetime in a state that contains lifetimes *)
+Definition end_lt {S} {Hlens: Lens S Lifetimes} (st:S) l : S :=
+  lput st (replace_lifetime (lget st) l finished).
+
 
 (** [n1] in the lifetime list [x1] subsumes [n2] in the lifetime list [x2] *)
 Definition subsumes n1 n2 x1 x2 :=
