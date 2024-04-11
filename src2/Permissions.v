@@ -1622,7 +1622,7 @@ Section Permissions.
     eapply Perms_upwards_closed; eauto.
   Qed.
 
-  (* If P is below any element of Ps then it is below its join *)
+  (* A join is an upper bound for all its elements *)
   Lemma lte_join_Perms : forall (Ps : Perms -> Prop) P,
       (exists Q, Ps Q /\ P ⊑ Q) ->
       P ⊑ join_Perms Ps.
@@ -1630,8 +1630,8 @@ Section Permissions.
     repeat intro. destruct H as [Q [? ?]]. apply H1. apply H0. assumption.
   Qed.
 
-  (* If Q is above all elements of Ps then it is above its join *)
-  Lemma join_Perms_max : forall (Ps : Perms -> Prop) Q,
+  (* A join is the least upper bound for all its elements *)
+  Lemma join_Perms_min : forall (Ps : Perms -> Prop) Q,
       (forall P, Ps P -> P ⊑ Q) ->
       join_Perms Ps ⊑ Q.
   Proof.
@@ -1650,9 +1650,9 @@ Section Permissions.
   Qed.
 
   (* If R is above both P and Q then it is above their binary join *)
-  Lemma join_Perms2_max P Q R : P ⊑ R -> Q ⊑ R -> join_Perms2 P Q ⊑ R.
+  Lemma join_Perms2_min P Q R : P ⊑ R -> Q ⊑ R -> join_Perms2 P Q ⊑ R.
   Proof.
-    intros; apply join_Perms_max; intros.
+    intros; apply join_Perms_min; intros.
     destruct H1; subst; assumption.
   Qed.
 
@@ -1675,13 +1675,16 @@ Section Permissions.
     apply (Perms_upwards_closed _ p1); assumption.
   Qed.
 
+  (* A meet is a lower bound for all its elements *)
   Lemma lte_meet_Perms : forall (Ps : Perms -> Prop) P,
-      Ps P ->
+      (exists Q, Ps Q /\ Q ⊑ P) ->
       meet_Perms Ps ⊑ P.
   Proof.
-    repeat intro. exists P. auto.
+    repeat intro. destruct H as [Q [? ?]]. exists Q.
+    split; [ | apply H1 ]; assumption.
   Qed.
 
+  (* A meet is the greatest lower bound for all its elements *)
   Lemma meet_Perms_max : forall (Ps : Perms -> Prop) Q,
       (forall P, Ps P -> Q ⊑ P) ->
       Q ⊑ meet_Perms Ps.
@@ -1727,6 +1730,19 @@ Section Permissions.
     intros. exists (f p). split; [ | reflexivity ].
     exists p. split; [ assumption | reflexivity ].
   Qed.
+
+  (* Mapping a singleton_Perms is the same as applying the function *)
+  Lemma map_singleton_Perms f (p : perm) `{Proper _ (lte_perm ==> lte_perm) f} :
+    eq_Perms (mapPerms f (singleton_Perms p)) (singleton_Perms (f p)).
+  Proof.
+    split; repeat intro.
+    - exists (f p). split; [ | assumption ].
+      exists p; split; simpl; reflexivity.
+    - destruct H0 as [fp [[p' [? ?]] ?]]. subst. simpl in H0.
+      simpl. etransitivity; [ | eassumption ].
+      apply H; assumption.
+  Qed.
+
 
   (* Mapping a mkPerms set with a monotonic function yields what you would
   expect *)
