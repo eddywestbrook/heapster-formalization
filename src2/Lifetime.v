@@ -110,17 +110,68 @@ Definition lifetime : Lifetimes -> nat -> option status :=
 Definition replace_lifetime (l : Lifetimes) (n : nat) (new : status) : Lifetimes :=
   replace_list_index l n new.
 
+(* FIXME: change all this to a partial lens *)
+
+(* Get the status of a lifetime in a state that contains lifetimes *)
+Definition get_lt {S} {Hlens: Lens S Lifetimes} (st:S) l : option status :=
+  lifetime (lget st) l.
+
 (* Set the status of a lifetime in a state that contains lifetimes *)
 Definition set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l status : S :=
   lput st (replace_lifetime (lget st) l status).
 
+(* Set the status of a lifetime in a state if one is given *)
+Definition set_lt_opt {S} {Hlens: Lens S Lifetimes} (st:S) l opt_s : S :=
+  match opt_s with
+  | None => st
+  | Some s => set_lt st l s
+  end.
+
+(* The get-put rule for get_lt and set_lt *)
+Lemma get_lt_set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l status :
+  get_lt (set_lt st l status) l = Some status.
+Proof.
+  unfold get_lt, set_lt, replace_lifetime, lifetime. intros.
+  rewrite lGetPut. apply nth_error_replace_list_index_eq.
+Qed.
+
+(* The put-get rule for get_lt and set_lt *)
+Lemma set_lt_get_lt {S} {Hlens: Lens S Lifetimes} (st:S) l :
+  set_lt_opt st l (get_lt st l) = st.
+Proof.
+  unfold set_lt_opt, set_lt, get_lt, replace_lifetime, lifetime.
+  case_eq (@nth_error status (lget (B:=Lifetimes) st) l);
+    [ | reflexivity ].
+  intros. rewrite replace_list_index_eq; [ apply lPutGet | assumption ].
+Qed.
+
 (* set_lt is idempotent *)
-Lemma set_lt_set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l status :
+Lemma set_lt_idem {S} {Hlens: Lens S Lifetimes} (st:S) l status :
   set_lt (set_lt st l status) l status = set_lt st l status.
 Proof.
   unfold set_lt, replace_lifetime. rewrite lPutPut.
   rewrite lGetPut. rewrite replace_list_index_idem.
   reflexivity.
+Qed.
+
+(* Setting a lifetime twice keeps the final value if it was already set *)
+Lemma set_lt_set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l s0 s1 s2 :
+  get_lt st l = Some s0 ->
+  set_lt (set_lt st l s1) l s2 = set_lt st l s2.
+Proof.
+  unfold get_lt, set_lt, replace_lifetime, lifetime. intros.
+  rewrite lPutPut. rewrite lGetPut.
+  rewrite replace_list_index_twice; [ reflexivity | ].
+  apply nth_error_Some. intro. rewrite H0 in H. discriminate.
+Qed.
+
+(* Setting a lifetime to what it already is does nothing *)
+Lemma set_lt_eq {S} {Hlens: Lens S Lifetimes} (st:S) l s :
+  lifetime (lget st) l = Some s -> set_lt st l s = st.
+Proof.
+  unfold lifetime, set_lt, replace_lifetime. intros.
+  rewrite replace_list_index_eq; [ | assumption ].
+  apply lPutGet.
 Qed.
 
 (* End a lifetime in a state that contains lifetimes *)
@@ -130,7 +181,7 @@ Definition end_lt {S} {Hlens: Lens S Lifetimes} (st:S) l : S :=
 (* end_lt is idempotent *)
 Lemma end_lt_end_lt {S} {Hlens: Lens S Lifetimes} (st:S) l :
   end_lt (end_lt st l) l = end_lt st l.
-Proof. apply set_lt_set_lt. Qed.
+Proof. apply set_lt_idem. Qed.
 
 
 (** [n1] in the lifetime list [x1] subsumes [n2] in the lifetime list [x2] *)

@@ -126,6 +126,16 @@ Proof.
   - simpl in IHl. rewrite (IHl n). reflexivity.
 Qed.
 
+Lemma replace_list_index_twice {A} l n new1 new2 :
+  n < length l ->
+  @replace_list_index A (replace_list_index l n new1) n new2 =
+    replace_list_index l n new2.
+Proof.
+  revert n; induction l; intros; [ induction n | destruct n ]; simpl; try reflexivity.
+  - inversion H.
+  - f_equal. apply IHl. apply Lt.lt_S_n. assumption.
+Qed.
+
 
 (** * itree stuff *)
 

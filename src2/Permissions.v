@@ -1263,6 +1263,40 @@ Section Permissions.
       assumption.
   Qed.
 
+  (* Separating conjunction is stricly monotone if the lesser permissions are
+     separate *)
+  Lemma sep_conj_perm_monotone_sep p p' q q' :
+    p' ⊥ q' -> p' <= p -> q' <= q -> p' ** q' <= p ** q.
+  Proof.
+    constructor; intros.
+    - destruct H2 as [? [? ?]]. destruct H3.
+      split; [ apply H0 | apply H1 ]; assumption.
+    - destruct H2 as [? [? ?]]. destruct H3.
+      split; [ apply H0 | apply H1 ]; assumption.
+    - assert (guar (p ** q) x y /\ inv (p ** q) y) as [? ?]; [ | assumption ].
+      induction H3; [ destruct H3 | ].
+      + destruct H2 as [? [? ?]].
+        split; [ apply t_step; left; apply H0; assumption | ].
+        split; [ | split; [ | assumption ]].
+        * eapply inv_guar; [ | eassumption ]. apply H0; assumption.
+        * eapply inv_rely; [ | eassumption ].
+          apply (sep_r _ _ H5); try assumption.
+          apply H0; assumption.
+      + destruct H2 as [? [? ?]].
+        split; [ apply t_step; right; apply H1; assumption | ].
+        split; [ | split; [ | assumption ]].
+        * eapply inv_rely; [ | eassumption ].
+          apply (sep_l _ _ H5); try assumption.
+          apply H1; assumption.
+        * eapply inv_guar; [ | eassumption ]. apply H1; assumption.
+      + destruct (IHclos_trans1 H2).
+        destruct (IHclos_trans2 H4).
+        split; [ | assumption ].
+        etransitivity; eassumption.
+    - destruct H2 as [? [? ?]].
+      split; [ apply H0 | split; [ apply H1 | ]]; assumption.
+  Qed.
+
   Lemma eq_perm_sep_conj_lte_l p p' q : eq_perm p p' -> p ** q <= p' ** q.
   Proof.
     constructor; intros.
@@ -1613,6 +1647,14 @@ Section Permissions.
     etransitivity; eassumption.
   Qed.
 
+  (* singleton_Perms preserves ordering *)
+  Lemma lte_singleton_Perms p q :
+    p <= q -> lte_Perms (singleton_Perms p) (singleton_Perms q).
+  Proof.
+    repeat intro. simpl in H0. simpl. etransitivity; eassumption.
+  Qed.
+
+
   (* The complete join / least upper bound of a set of permission sets *)
   Program Definition join_Perms (Ps : Perms -> Prop) : Perms :=
     {|
@@ -1929,6 +1971,21 @@ Section Permissions.
     Proper (eq_Perms ==> eq_Perms ==> Basics.flip Basics.impl) entails_Perms.
   Proof.
     do 6 red. intros. rewrite H. rewrite H0. auto.
+  Qed.
+
+
+  (* The conjunction of singletons is the singleton of the conjunction *)
+  Lemma sep_conj_singleton p q :
+    p ⊥ q ->
+    eq_Perms (singleton_Perms p * singleton_Perms q) (singleton_Perms (p ** q)).
+  Proof.
+    split; repeat intro.
+    - exists p. exists q. simpl.
+      split; [ reflexivity | ]. split; [ reflexivity | ].
+      split; assumption.
+    - destruct H0 as [p' [q' [? [? [? ?]]]]]. simpl.
+      etransitivity; [ | eassumption ].
+      apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
 
