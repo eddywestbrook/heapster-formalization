@@ -210,6 +210,29 @@ Next Obligation.
 Qed.
 
 
+(* The length of a list equals the least index where iget returns None *)
+Lemma lt_length_least_None A (l : list A) n :
+  length l = n <->
+    (iget n l = None /\
+       forall i, i < n -> exists s, iget i l = Some s).
+Proof.
+  split; [ split | ]; intros.
+  - apply nth_error_None. subst. reflexivity.
+  - subst. apply nth_error_Some in H0. simpl.
+    destruct (nth_error l i); [ eexists; reflexivity | ].
+    elimtype False; apply H0; reflexivity.
+  - revert n H; induction l; destruct n; intros; destruct H.
+    + reflexivity.
+    + destruct (H0 n); [ unfold lt; reflexivity | ].
+      destruct n; simpl in H1; discriminate.
+    + simpl in H. discriminate.
+    + simpl. f_equal. apply IHl. simpl in H.
+      split; [ assumption | ]. intros.
+      apply (H0 (Datatypes.S i)).
+      apply Lt.lt_n_S. assumption.
+Qed.
+
+
 (** * itree stuff *)
 
 (* The effect that combines a get and a put on the current state, by modifying

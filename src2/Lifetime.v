@@ -259,6 +259,20 @@ Definition subsumes n1 n2 x1 x2 :=
       erewrite iGetPut_neq; [ rewrite H2; reflexivity | assumption | eassumption ].
   Qed.
 
+  (* Lifetimes_lte implies the length gets no shorter *)
+  Lemma Lifetimes_lte_length_lte st1 st2 :
+    Lifetimes_lte st1 st2 -> length (lget st1) <= length (lget st2).
+  Proof.
+    unfold Lifetimes_lte, lifetime, Lifetimes. simpl.
+    generalize (@lget S (list status) _ st2). clear st2.
+    generalize (@lget S (list status) _ st1). clear st1.
+    intro l1; induction l1; intros l2 ?; [ | destruct l2 ].
+    - apply le_0_n.
+    - elimtype False; apply (H0 0).
+    - simpl. apply le_n_S. apply IHl1. intro n.
+      apply (H0 (Datatypes.S n)).
+  Qed.
+
 
   (* l is lte all lifetimes in a set, i.e., it subsumes them *)
   Definition all_lte l (ls : nat -> Prop) st : Prop :=

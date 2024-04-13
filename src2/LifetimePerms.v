@@ -132,11 +132,12 @@ apply H. auto.
    *)
 
 
+
   (* Permission to allocate lifetimes with index >= n; also requires any other
   permissions (via its rely) to respect the lifetime evolution order *)
   Program Definition lalloc_perm (n : nat) : perm :=
     {|
-      pre x := lifetime x n = None;
+      pre x := length (lget x) = n;
 
       rely x y :=
         Lifetimes_lte x y /\
@@ -165,7 +166,17 @@ apply H. auto.
       intro. etransitivity; [ apply H2 | apply H4 ].
   Qed.
   Next Obligation.
-    symmetry; apply H1. unfold ge. reflexivity.
+    destruct (proj1 (lt_length_least_None _ _ (length (lget x))) (reflexivity _)).
+    apply lt_length_least_None. split.
+    - symmetry in H1.
+      etransitivity; [ apply H1; unfold ge; reflexivity | assumption ].
+    - intros.
+      assert (i < length (lget y));
+        [ eapply Lt.lt_le_trans; [ | apply Lifetimes_lte_length_lte ]; eassumption | ].
+      pose proof (proj2 (nth_error_Some _ _) H4).
+      simpl. simpl in H4.
+      destruct (nth_error (lget y) i); [ eexists; reflexivity | ].
+      elimtype False; apply H5; reflexivity.
   Qed.
 
 
