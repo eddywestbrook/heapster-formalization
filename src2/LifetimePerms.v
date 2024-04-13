@@ -728,7 +728,7 @@ apply H. auto.
 
   (* If l is finished then we can recover a permission from an after_perm and a
   rewind_perm, assuming that permission is separate from lowned *)
-  Lemma lfinished_after l p :
+  Lemma lfinished_after_perm l p :
     p ⊥ lowned_perm l (fun _ => False) ->
     lfinished_perm l ** p <=
       lfinished_perm l ** (rewind_perm l p ** after_perm l p).
@@ -827,6 +827,24 @@ Section LifetimeRules.
     apply perm_split_lt.
   Qed.
 
+  Lemma rewind_conj l P Q :
+    eq_Perms (rewind l (P * Q)) (rewind l P * rewind l Q).
+  Admitted.
+
+  Lemma lfinished_distrib l P Q :
+    eq_Perms (lfinished l * (P * Q)) ((lfinished l * P) * (lfinished l * Q)).
+  Admitted.
+
+  Lemma impl_Perms_apply (P Q : @Perms S) : P * impl_Perms P Q ⊨ Q.
+  Admitted.
+
+  Lemma lfinished_after l p :
+    p ⊥ lowned_perm l (fun _ => False) ->
+    lfinished l * (rewind l (when l (singleton_Perms p)) * after l (singleton_Perms p))
+    ⊨ singleton_Perms p.
+  Admitted.
+
+
   (* The rule for splitting the lifetime of a singleton permission *)
   Lemma lowned_split_lt l ls p Q R :
     p ⊥ lowned_perm l (fun _ => False) ->
@@ -846,7 +864,20 @@ Section LifetimeRules.
     rewrite (sep_conj_Perms_commut (after l (singleton_Perms p))).
     rewrite <- (sep_conj_Perms_assoc _ (after l (singleton_Perms p))).
     apply sep_conj_Perms_monotone; [ reflexivity | ].
-  Admitted.
+    refine (proj1 (adjunction _ _ _) _).
+    rewrite rewind_conj.
+    rewrite (sep_conj_Perms_commut (rewind l _) (rewind l Q)).
+    rewrite lfinished_distrib.
+    rewrite <- (sep_conj_Perms_assoc (after l (singleton_Perms p))).
+    rewrite (sep_conj_Perms_assoc (impl_Perms _ _)).
+    rewrite (sep_conj_Perms_commut _ (lfinished l * rewind l (when l _))).
+    rewrite (sep_conj_Perms_assoc (after l _)).
+    rewrite (sep_conj_Perms_commut (impl_Perms _ _)).
+    apply sep_conj_Perms_monotone; [ | apply impl_Perms_apply ].
+    rewrite (sep_conj_Perms_commut (after _ _)).
+    rewrite <- (sep_conj_Perms_assoc).
+    apply lfinished_after; assumption.
+  Qed.
 
 
 (* End LifetimeRules. *)
