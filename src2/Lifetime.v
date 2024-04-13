@@ -106,13 +106,31 @@ Definition Lifetimes := list status.
 Definition lifetime : Lifetimes -> nat -> option status :=
   @nth_error status.
 
-(* Set the status of a lifetime *)
+(* Set the status of a lifetime in a lifetime state *)
 Definition replace_lifetime (l : Lifetimes) (n : nat) (new : status) : Lifetimes :=
   replace_list_index l n new.
 
+(* Set the status of a lifetime in a state that contains lifetimes *)
+Definition set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l status : S :=
+  lput st (replace_lifetime (lget st) l status).
+
+(* set_lt is idempotent *)
+Lemma set_lt_set_lt {S} {Hlens: Lens S Lifetimes} (st:S) l status :
+  set_lt (set_lt st l status) l status = set_lt st l status.
+Proof.
+  unfold set_lt, replace_lifetime. rewrite lPutPut.
+  rewrite lGetPut. rewrite replace_list_index_idem.
+  reflexivity.
+Qed.
+
 (* End a lifetime in a state that contains lifetimes *)
 Definition end_lt {S} {Hlens: Lens S Lifetimes} (st:S) l : S :=
-  lput st (replace_lifetime (lget st) l finished).
+  set_lt st l finished.
+
+(* end_lt is idempotent *)
+Lemma end_lt_end_lt {S} {Hlens: Lens S Lifetimes} (st:S) l :
+  end_lt (end_lt st l) l = end_lt st l.
+Proof. apply set_lt_set_lt. Qed.
 
 
 (** [n1] in the lifetime list [x1] subsumes [n2] in the lifetime list [x2] *)

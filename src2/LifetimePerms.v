@@ -199,18 +199,13 @@ apply H. auto.
     - destruct H; [ subst; assumption | ].
       destruct H0; [ subst; right; assumption | ].
       destruct H as [? [? ?]]. destruct H0 as [? [? ?]].
-      right; subst. unfold end_lt, replace_lifetime in * |- *.
-      repeat rewrite lGetPut. repeat rewrite lPutPut.
-      rewrite replace_list_index_idem.
-      split; [ reflexivity | ].
-      rewrite lPutPut in H3. rewrite lGetPut in H3.
-      rewrite replace_list_index_idem in H3.
-      split; [ assumption | ].
-      rewrite lGetPut in H4. assumption.
+      right; subst.
+      split; [ apply end_lt_end_lt | ].
+      split; assumption.
   Qed.
   Next Obligation.
     destruct H as [? | [? [? ?]]]; subst; [ split; assumption | ].
-    unfold end_lt, replace_lifetime in * |- *.
+    unfold end_lt, set_lt, replace_lifetime in * |- *.
     rewrite lGetPut.
     split; [ | apply all_lte_finish; try assumption;
                apply lte_current_lt_length; assumption ].
@@ -255,7 +250,7 @@ apply H. auto.
       etransitivity; [ apply H2; eassumption | apply H4 ].
     - destruct H2; subst; [ reflexivity | ].
       destruct H2 as [? [? ?]]. subst. destruct H0.
-      split; [ | split ]; unfold end_lt, replace_lifetime in * |- *.
+      split; [ | split ]; unfold end_lt, set_lt, replace_lifetime in * |- *.
       + rewrite lGetPut.
         apply Lifetimes_lte_update;
           [ apply lte_current_lt_length; assumption | apply finished_greatest ].
@@ -275,7 +270,7 @@ apply H. auto.
   Proof.
     intros. destruct H0. destruct H1.
     destruct H2 as [? | [? [? ?]]]; subst; [ reflexivity | ].
-    simpl. unfold end_lt, replace_lifetime in * |- *. rewrite lGetPut.
+    simpl. unfold end_lt, set_lt, replace_lifetime in * |- *. rewrite lGetPut.
     assert (l1 < length (lget x));
       [ apply lte_current_lt_length; assumption | ].
     unfold all_lte, lifetime.
@@ -547,7 +542,7 @@ apply H. auto.
   Proof.
     constructor; intros.
     - destruct H2 as [ ? | [? [[? ?] ?]]]; [ subst; reflexivity | ]. subst. simpl.
-      unfold end_lt, replace_lifetime in * |- *.
+      unfold end_lt, set_lt, replace_lifetime in * |- *.
       rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
       split; [ apply finished_greatest | ].
       destruct H1. left; apply (sep_l _ _ H); try assumption.
@@ -567,7 +562,7 @@ apply H. auto.
       assert (rely p x y).
       + apply (sep_l _ _ H); try assumption.
         right; split; [ | split ]; assumption.
-      + subst. simpl. unfold end_lt, replace_lifetime in * |- *.
+      + subst. simpl. unfold end_lt, set_lt, replace_lifetime in * |- *.
         rewrite lGetPut. unfold lifetime; rewrite nth_error_replace_list_index_eq.
         split; [ apply finished_greatest | ].
         split; [ intro; eapply inv_rely; eassumption | ].
@@ -777,6 +772,35 @@ Section LifetimeRules.
   Context {S : Type}.
   Context `{Hlens: Lens S Lifetimes}.
 *)
+
+  (* The permission set stating that l is finished *)
+  Definition lfinished l : Perms :=
+    singleton_Perms (lfinished_perm l).
+
+
+  Definition lowned_set l ls : Perms :=
+    singleton_Perms (lowned_perm l ls (fun _ => True)).
+
+  (* The set of permissions preperm (fun s => pre p (set l to current)) for all
+  permissions p in P *)
+  Definition beforePre l P :=
+    mapPerms
+      (fun p =>
+         preperm (fun st =>
+                    pre p (lput st (replace_lifetime (lget st) l current))))
+      P.
+
+  (* lowned is the conjunction of an lowned perm plus any permission p such that
+  if the precondition of P held before l was ended then p implies Q after l
+  finishes *)
+  Definition lowned l ls P Q :=
+    lowned_set l ls * impl_Perms (lfinished l * beforePre l P) Q.
+
+FIXME: remove the pred from lowned_perm; remove the precondition from after_perm;
+change lfinished_after to require:
+  lfinished l ** (after_perm l p ** before_pre_perm l p)
+
+
 
   (* The set of permissions when_perm l p for all p in P *)
   Definition when l P : Perms := mapPerms (when_perm l) P.
