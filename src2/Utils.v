@@ -212,6 +212,9 @@ Qed.
 
 (** * itree stuff *)
 
+(* The effect that combines a get and a put on the current state, by modifying
+the state according to the supplied function and returning the old version
+before it was modified *)
 Variant modifyE C : Type -> Type :=
   | Modify : forall (f : C -> C), modifyE C C.
 Global Arguments Modify {C} f.

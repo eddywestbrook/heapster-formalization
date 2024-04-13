@@ -136,17 +136,16 @@ apply H. auto.
   permissions (via its rely) to respect the lifetime evolution order *)
   Program Definition lalloc_perm (n : nat) : perm :=
     {|
-      pre x := length (lget x) = n;
+      pre x := lifetime x n = None;
 
       rely x y :=
-        Lifetimes_lte (lget x) (lget y) /\
-          length (lget x) = length (lget y) /\
-          (forall n', n' >= n -> get_lt x n' = get_lt y n');
+        Lifetimes_lte x y /\
+          (forall n', n' >= n -> lifetime x n' = lifetime y n');
 
       guar x y :=
         (exists (ls : Lifetimes), y = lput x ls) /\
-          (forall l, l < n -> lifetime (lget x) l = lifetime (lget y) l) /\
-          Lifetimes_lte (lget x) (lget y);
+          (forall l, l < n -> lifetime x l = lifetime y l) /\
+          Lifetimes_lte x y;
 
       inv x := True;
     |}.
@@ -160,11 +159,13 @@ apply H. auto.
     - split; [ exists (lget x); symmetry; apply lPutGet | ].
       split; reflexivity.
     - destruct H as [[lts_x ?] [? ?]]. destruct H0 as [[lts_y ?] [? ?]]. subst.
-      repeat rewrite lPutPut in * |- *. repeat rewrite lGetPut in * |- *.
-      rewrite lGetPut in H4. rewrite lGetPut in H3.
+      repeat rewrite lPutPut in * |- *.
       split; [ eexists; reflexivity | ].
-      split; [ | etransitivity; eassumption ].
-      intros; etransitivity; [ apply H1 | apply H3 ]; assumption.
+      split; [ intros; etransitivity; [ apply H1 | apply H3 ]; assumption | ].
+      intro. etransitivity; [ apply H2 | apply H4 ].
+  Qed.
+  Next Obligation.
+    symmetry; apply H1. unfold ge. reflexivity.
   Qed.
 
 
@@ -173,24 +174,24 @@ apply H. auto.
   Program Definition lowned_perm l (ls : nat -> Prop) :=
     {|
       (* [l] must be current *)
-      pre x := get_lt x l = Some current;
+      pre x := lifetime x l = Some current;
 
       (* Nobody else can change l or violate the all_lte invariant *)
       rely x y :=
-        get_lt x l = get_lt y l /\
-          (all_lte l ls (lget x) -> all_lte l ls (lget y));
+        lifetime x l = lifetime y l /\
+          (all_lte l ls x -> all_lte l ls y);
 
       (* I can end l if all children are finished *)
       guar x y :=
         x = y \/
-          y = end_lt x l /\
-            (forall l', ls l' -> get_lt x l' = Some finished);
+          y = end_lifetime x l /\
+            (forall l', ls l' -> lifetime x l' = Some finished);
 
       (* l has at least been allocated, and if l is finished then so are all its
       children *)
       inv x :=
-        statusOf_lte (Some current) (get_lt x l) /\
-          all_lte l ls (lget x);
+        statusOf_lte (Some current) (lifetime x l) /\
+          all_lte l ls x;
     |}.
   Next Obligation.
     constructor; repeat intro.
@@ -199,14 +200,13 @@ apply H. auto.
       destruct H0; [ subst; right; assumption | ].
       destruct H. destruct H0.
       right; subst.
-      split; [ apply end_lt_end_lt | ]. assumption.
+      split; [ apply iPutPut_eq | ]. assumption.
   Qed.
   Next Obligation.
     destruct H as [? | [? ?]]; subst; [ split; assumption | ].
-    unfold end_lt. rewrite get_lt_set_lt. split; [ apply I | ].
-    unfold set_lt. rewrite lGetPut.
-    apply all_lte_finish; try assumption;
-      apply lte_current_lt_length; assumption.
+    rewrite end_lifetime_eq. split; [ apply I | ].
+    apply all_lte_finish. repeat intro.
+    apply H2; assumption.
   Qed.
 
 
@@ -217,22 +217,14 @@ apply H. auto.
     constructor; intros.
     - destruct H2 as [[lts_y ?] [? ?]]; subst.
       split; [ apply H3; assumption | ].
-      repeat intro. rewrite lGetPut.
-      rewrite lGetPut in H3. rewrite lGetPut in H4.
+      repeat intro.
       rewrite <- (H3 l); [ | assumption ].
       etransitivity; [ apply H2; eassumption | apply H4 ].
-    - destruct H2; subst; [ reflexivity | ].
-      destruct H2 as [? ?]. subst. destruct H0.
-      split; [ | split ]; unfold end_lt, set_lt, get_lt, replace_lifetime.
-      + rewrite lGetPut.
-        apply Lifetimes_lte_update;
-          [ apply lte_current_lt_length; assumption | apply finished_greatest ].
-      + rewrite lGetPut. apply replace_list_index_length.
-        apply lte_current_lt_length. assumption.
-      + intros. rewrite lGetPut. unfold lifetime.
-        apply nth_error_replace_list_index_neq;
-          [ apply lte_current_lt_length; assumption | ].
-        intro. subst. apply (Lt.lt_not_le l n); assumption.
+    - destruct H2 as [? | [? ?]]; subst; [ reflexivity | ]. destruct H0.
+      split.
+      + apply Lifetimes_lte_update; [ assumption | apply finished_greatest ].
+      + intros. symmetry; apply end_lifetime_neq; [ | assumption ].
+        intro; subst. apply (Lt.lt_not_le l n); assumption.
   Qed.
 
 
@@ -243,19 +235,20 @@ apply H. auto.
   Proof.
     intros. destruct H0. destruct H1.
     destruct H2 as [? | [? ?]]; subst; [ reflexivity | ].
-    simpl. unfold end_lt, set_lt, get_lt, replace_lifetime in * |- *.
-    rewrite lGetPut.
-    assert (l1 < length (lget x));
-      [ apply lte_current_lt_length; assumption | ].
-    unfold all_lte, lifetime.
-    rewrite <- nth_error_replace_list_index_neq;
-      [ | assumption | apply Nat.neq_sym; assumption ].
-    split; [ reflexivity | ]. intros.
-    destruct (Nat.eq_dec l' l1).
-    + subst. rewrite nth_error_replace_list_index_eq.
-      apply finished_greatest.
-    + rewrite <- nth_error_replace_list_index_neq; try assumption.
-      apply H6. assumption.
+    split.
+    - rewrite end_lifetime_neq; [ reflexivity
+                                | intro; subst; apply H; reflexivity
+                                | eassumption ].
+    - repeat intro.
+      destruct (Nat.eq_dec l' l1).
+      + subst. rewrite end_lifetime_eq. apply finished_greatest.
+      + destruct (current_lte_Some _ H1).
+        assert (statusOf_lte (Some current) (iget l' x));
+          [ etransitivity; [ | apply H4 ]; assumption | ].
+        destruct (current_lte_Some _ H8).
+        erewrite (end_lifetime_neq x l1 l2);
+          [ | intro; subst; apply H; reflexivity | assumption ].
+        erewrite (end_lifetime_neq x l1 l'); [ apply H4 | | ]; eassumption.
   Qed.
 
   Lemma lowned_lowned_separate l1 ls1 l2 ls2 :
@@ -288,8 +281,7 @@ apply H. auto.
     - destruct H as [[? ?] [? ?]]. destruct H0. split; [ | assumption ].
       destruct H0. destruct H4.
       split; [ assumption | ]. repeat intro. destruct H8.
-      + subst. unfold get_lt in H0. rewrite <- H0.
-        unfold get_lt in H4. rewrite <- H4. apply H7; left; reflexivity.
+      + subst. rewrite <- H0. rewrite <- H4. apply H7; left; reflexivity.
       + apply H5; [ | assumption ]. repeat intro; apply H7; right; assumption.
   Qed.
 
@@ -297,20 +289,20 @@ apply H. auto.
   (* Note: does not have permission to start or end the lifetime [l] *)
   Program Definition when_perm (l : nat) (p : perm) : perm :=
     {|
-      pre x := pre p x \/ get_lt x l = Some finished;
+      pre x := pre p x \/ lifetime x l = Some finished;
 
       rely x y :=
-        statusOf_lte (get_lt x l) (get_lt y l) /\
+        statusOf_lte (lifetime x l) (lifetime y l) /\
         (* if the lifetime isn't ending or already ended, the rely of p must hold *)
-        (rely p x y \/ get_lt y l = Some finished /\ inv p y);
+        (rely p x y \/ lifetime y l = Some finished /\ inv p y);
 
       guar x y :=
         x = y \/
-          get_lt x l = Some current /\
-          get_lt y l = Some current /\
+          lifetime x l = Some current /\
+          lifetime y l = Some current /\
           guar p x y;
 
-      inv x := inv p x /\ statusOf_lte (Some current) (get_lt x l)
+      inv x := inv p x /\ statusOf_lte (Some current) (lifetime x l)
     |}.
   Next Obligation.
     constructor; repeat intro.
@@ -344,7 +336,7 @@ apply H. auto.
     split; [ destruct H2 | ].
     - eapply inv_rely; eassumption.
     - destruct H2; assumption.
-    - change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    - change (statusOf_lte (Some current) (lifetime y l)).
       etransitivity; [ apply H1 | apply H ].
   Qed.
   Next Obligation.
@@ -352,7 +344,7 @@ apply H. auto.
     destruct H as [? [? ?]].
     split.
     - eapply inv_guar; eassumption.
-    - change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    - change (statusOf_lte (Some current) (lifetime y l)).
       rewrite <- H2; reflexivity.
   Qed.
 
@@ -404,18 +396,18 @@ apply H. auto.
       pre x := True;
 
       rely x y :=
-        statusOf_lte (get_lt x l) (get_lt y l) /\
+        statusOf_lte (lifetime x l) (lifetime y l) /\
           (inv p x -> inv p y) /\
-          (lifetime (lget x) l = Some finished -> rely p x y);
+          (lifetime x l = Some finished -> rely p x y);
 
       (** If [l] is finished afterwards, the guar of [p] holds *)
       guar x y :=
         x = y \/
-          get_lt x l = Some finished /\
-            get_lt y l = Some finished /\
+          lifetime x l = Some finished /\
+            lifetime y l = Some finished /\
             guar p x y;
 
-      inv x := inv p x /\ statusOf_lte (Some current) (get_lt x l)
+      inv x := inv p x /\ statusOf_lte (Some current) (lifetime x l)
     |}.
   Next Obligation.
     constructor; intros.
@@ -438,13 +430,13 @@ apply H. auto.
   Qed.
   Next Obligation.
     split; [ auto | ].
-    change (statusOf_lte (Some current) (lifetime (lget y) l)).
+    change (statusOf_lte (Some current) (lifetime y l)).
     etransitivity; eassumption.
   Qed.
   Next Obligation.
     destruct H; [ subst; split; assumption | ]. destruct H as [? [? ?]].
     split; [ eapply inv_guar; eassumption | ].
-    change (statusOf_lte (Some current) (get_lt y l)).
+    change (statusOf_lte (Some current) (lifetime y l)).
     rewrite H2; simpl; trivial.
   Qed.
 
@@ -480,7 +472,7 @@ apply H. auto.
     - destruct H1 as [ ? | [? [? ?]]]; [ subst; reflexivity | ].
       split; [ rewrite H1; rewrite H2; reflexivity | ].
       split; [ intro; eapply inv_guar; eassumption | ].
-      intros. unfold get_lt in H1. rewrite H4 in H1. discriminate.
+      intros. rewrite H4 in H1. discriminate.
   Qed.
 
   Lemma separate_when_lowned l ls p :
@@ -488,7 +480,7 @@ apply H. auto.
   Proof.
     constructor; intros.
     - destruct H2 as [ ? | [? ?]]; [ subst; reflexivity | ]. subst. simpl.
-      unfold end_lt. rewrite get_lt_set_lt.
+      rewrite end_lifetime_eq.
       split; [ apply finished_greatest | ].
       destruct H1. left; apply (sep_l _ _ H); try assumption.
       right; split; [ reflexivity | assumption ].
@@ -506,7 +498,7 @@ apply H. auto.
       assert (rely p x y).
       + apply (sep_l _ _ H); try assumption.
         right; split; assumption.
-      + subst. simpl. unfold end_lt. rewrite get_lt_set_lt.
+      + subst. simpl. rewrite end_lifetime_eq.
         split; [ apply finished_greatest | ].
         split; [ intro; eapply inv_rely; eassumption | ].
         intros; assumption.
@@ -581,18 +573,18 @@ apply H. auto.
     {|
       pre x := True;
       rely x y :=
-        statusOf_lte (get_lt x l1) (get_lt y l1) /\
-          statusOf_lte (get_lt x l2) (get_lt y l2) /\
-          (statusOf_lte (get_lt x l1) (get_lt x l2) ->
-           statusOf_lte (get_lt y l1) (get_lt y l2));
+        statusOf_lte (lifetime x l1) (lifetime y l1) /\
+          statusOf_lte (lifetime x l2) (lifetime y l2) /\
+          (statusOf_lte (lifetime x l1) (lifetime x l2) ->
+           statusOf_lte (lifetime y l1) (lifetime y l2));
       guar x y := x = y;
       inv x :=
-        statusOf_lte (Some current) (get_lt x l1) /\
-          statusOf_lte (get_lt x l1) (get_lt x l2)
+        statusOf_lte (Some current) (lifetime x l1) /\
+          statusOf_lte (lifetime x l1) (lifetime x l2)
     |}.
   Next Obligation.
     split.
-    - change (statusOf_lte (Some current) (get_lt y l1)).
+    - change (statusOf_lte (Some current) (lifetime y l1)).
       etransitivity; eassumption.
     - auto.
   Qed.
@@ -653,7 +645,7 @@ apply H. auto.
 
   (* Lifetime l is finished *)
   Definition lfinished_perm l :=
-    invperm (fun x => get_lt x l = Some finished).
+    invperm (fun x => lifetime x l = Some finished).
 
   (* lfinished can be duplicated *)
   Lemma lfinished_perm_dup l :
@@ -677,12 +669,12 @@ apply H. auto.
   invariant and precondition held *)
   Program Definition rewind_perm l p : perm :=
     {|
-      pre x := pre p (set_lt x l current);
+      pre x := pre p (replace_lifetime x l current);
       rely x y :=
-        (inv p (set_lt x l current) -> inv p (set_lt y l current)) /\
-          (pre p (set_lt x l current) -> pre p (set_lt y l current));
+        (inv p (replace_lifetime x l current) -> inv p (replace_lifetime y l current)) /\
+          (pre p (replace_lifetime x l current) -> pre p (replace_lifetime y l current));
       guar x y := x = y;
-      inv x := inv p (set_lt x l current);
+      inv x := inv p (replace_lifetime x l current);
     |}.
 
   (* Rewinding a when_perm is the same as rewinding the perm it contains *)
@@ -693,19 +685,20 @@ apply H. auto.
     - left; apply H0.
     - destruct H0. split; intros.
       + destruct H2. split; [ apply H0; apply H | ].
-        rewrite get_lt_set_lt. reflexivity.
+        rewrite replace_lifetime_eq. reflexivity.
       + left. apply H1. destruct H2; [ assumption | ].
-        rewrite get_lt_set_lt in H2. discriminate.
+        rewrite replace_lifetime_eq in H2. discriminate.
     - inversion H0. reflexivity.
-    - split; [ apply H | ]. rewrite get_lt_set_lt. reflexivity.
+    - split; [ apply H | ]. rewrite replace_lifetime_eq. reflexivity.
     - destruct H0; [ assumption | ].
-      rewrite get_lt_set_lt in H0. discriminate.
+      rewrite replace_lifetime_eq in H0. discriminate.
     - destruct H. destruct H0. split; intros.
       + refine (proj1 (H0 _)). split; [ assumption | ].
-        rewrite get_lt_set_lt; reflexivity.
-      + assert (pre (when_perm l p) (set_lt x l current)); [ left; assumption | ].
+        rewrite replace_lifetime_eq; reflexivity.
+      + assert (pre (when_perm l p) (replace_lifetime x l current));
+          [ left; assumption | ].
         destruct (H2 H4); [ assumption | ].
-        rewrite get_lt_set_lt in H5. discriminate.
+        rewrite replace_lifetime_eq in H5. discriminate.
     - inversion H0. reflexivity.
     - destruct H. assumption.
   Qed.
@@ -714,16 +707,17 @@ apply H. auto.
   (* If p is separate from lowned then pre p implies pre_set_cur l p *)
   Lemma lowned_sep_pre_set_cur l p st :
     p ⊥ lowned_perm l (fun _ => False) ->
-    lifetime (lget st) l = Some finished ->
+    lifetime st l = Some finished ->
     inv (rewind_perm l p) st -> pre (rewind_perm l p) st -> pre p st.
   Proof.
     intros. simpl in H1, H2. eapply pre_respects; [ | eassumption ].
     apply (sep_l _ _ H); try assumption.
-    - simpl. rewrite get_lt_set_lt.
+    - simpl. rewrite replace_lifetime_eq.
       split; [ apply I | ]. repeat intro; elimtype False; assumption.
     - right. split; [ | intros; elimtype False; assumption ].
-      unfold end_lt. erewrite set_lt_set_lt; [ | eassumption ].
-      rewrite set_lt_eq; [ | assumption ]. reflexivity.
+      unfold end_lifetime.
+      erewrite replace_lifetime_twice; [ | eassumption ].
+      rewrite eq_replace_lifetime; [ | assumption ]. reflexivity.
   Qed.
 
   (* If l is finished then we can recover a permission from an after_perm and a

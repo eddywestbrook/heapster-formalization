@@ -71,12 +71,12 @@ Proof.
 Qed.
 
 (* If s has at least started, then it is either current or finished *)
-Lemma current_lte_or_eq s : statusOf_lte (Some current) s ->
-                            s = Some current \/ s = Some finished.
+Lemma current_lte_Some s : statusOf_lte (Some current) s ->
+                           exists status, s = Some status.
 Proof.
   destruct s; [ destruct s | ]; intros.
-  - left; reflexivity.
-  - right; reflexivity.
+  - eexists; reflexivity.
+  - eexists; reflexivity.
   - simpl in H. elimtype False; assumption.
 Qed.
 
@@ -102,16 +102,64 @@ Qed.
 (* A lifetime state is a list of allocated lifetimes and their statuses *)
 Definition Lifetimes := list status.
 
-(* Get the status of a lifetime *)
-Definition lifetime : Lifetimes -> nat -> option status :=
-  @nth_error status.
+Section LifetimeLens.
 
-(* Set the status of a lifetime in a lifetime state *)
-Definition replace_lifetime (l : Lifetimes) (n : nat) (new : status) : Lifetimes :=
-  replace_list_index l n new.
+  Context {S} `{Lens S Lifetimes}.
 
-(* FIXME: change all this to a partial lens *)
+  (* Get the status of a lifetime *)
+  Definition lifetime (st:S) l : option status := iget l st.
 
+  (* Set the status of a lifetime in a lifetime state *)
+  Definition replace_lifetime (st:S) l new := iput l st new.
+
+  (* Set the statue of a lifetime to be finished *)
+  Definition end_lifetime (st:S) l := replace_lifetime st l finished.
+
+  Lemma replace_lifetime_eq st l new :
+    lifetime (replace_lifetime st l new) l = Some new.
+  Proof.
+    unfold lifetime, replace_lifetime. apply iGetPut_eq.
+  Qed.
+
+  Lemma end_lifetime_eq st l : lifetime (end_lifetime st l) l = Some finished.
+  Proof. apply replace_lifetime_eq. Qed.
+
+  (* If l has at least started then it is < the # allocated lifetimes *)
+  Lemma lte_current_lt_length l st :
+    statusOf_lte (Some current) (lifetime st l) -> l < length (lget st).
+  Proof.
+    intro. unfold lifetime, Lifetimes in H0. simpl in H0.
+    apply nth_error_Some; intro. rewrite H1 in H0. assumption.
+  Qed.
+
+  Lemma end_lifetime_neq st l l' :
+    l' <> l -> statusOf_lte (Some current) (lifetime st l) ->
+    lifetime (end_lifetime st l) l' = lifetime st l'.
+  Proof.
+    intros; unfold lifetime, end_lifetime, replace_lifetime.
+    simpl. rewrite lGetPut.
+    symmetry.
+    apply nth_error_replace_list_index_neq;
+      [ apply lte_current_lt_length | ]; assumption.
+  Qed.
+
+  (* Setting a lifetime to what it already is does nothing *)
+  Lemma eq_replace_lifetime (st:S) l s :
+    lifetime st l = Some s -> replace_lifetime st l s = st.
+  Proof.
+    unfold lifetime, replace_lifetime.
+    intro. eapply iPutGet; assumption.
+  Qed.
+
+  Lemma replace_lifetime_twice (st:S) l s0 s1 s2 :
+    lifetime st l = Some s0 ->
+    replace_lifetime (replace_lifetime st l s1) l s2 = replace_lifetime st l s2.
+  Proof.
+    unfold lifetime, replace_lifetime; intros.
+    eapply iPutPut; eassumption.
+  Qed.
+
+(*
 (* Get the status of a lifetime in a state that contains lifetimes *)
 Definition get_lt {S} {Hlens: Lens S Lifetimes} (st:S) l : option status :=
   lifetime (lget st) l.
@@ -187,58 +235,54 @@ Proof. apply set_lt_idem. Qed.
 (** [n1] in the lifetime list [x1] subsumes [n2] in the lifetime list [x2] *)
 Definition subsumes n1 n2 x1 x2 :=
   statusOf_subsumes (lifetime x1 n1) (lifetime x2 n2).
+*)
 
-Definition Lifetimes_lte (ls ls' : Lifetimes) : Prop :=
-  forall l, statusOf_lte (lifetime ls l) (lifetime ls' l).
+  (* All the lifetimes have not gone backwards in going between two states *)
+  Definition Lifetimes_lte (st1 st2 : S) : Prop :=
+    forall l, statusOf_lte (lifetime st1 l) (lifetime st2 l).
 
-Global Instance Lifetimes_lte_preorder : PreOrder Lifetimes_lte.
-Proof.
-  constructor; repeat intro.
-  - destruct (lifetime x l); [destruct s |]; cbn; auto.
-  - specialize (H l). specialize (H0 l). etransitivity; eauto.
-Qed.
+  Global Instance Lifetimes_lte_preorder : PreOrder Lifetimes_lte.
+  Proof.
+    constructor; repeat intro.
+    - destruct (lifetime x l); [destruct s |]; cbn; auto.
+    - specialize (H0 l). specialize (H1 l). etransitivity; eauto.
+  Qed.
 
-Lemma Lifetimes_lte_update ls l new :
-  l < length ls -> statusOf_lte (lifetime ls l) (Some new) ->
-  Lifetimes_lte ls (replace_list_index ls l new).
-Proof.
-  repeat intro. unfold lifetime. destruct (Nat.eq_dec l0 l).
-  - subst. rewrite nth_error_replace_list_index_eq. assumption.
-  - rewrite <- nth_error_replace_list_index_neq; try assumption.
-    reflexivity.
-Qed.
+  Lemma Lifetimes_lte_update st l new :
+    statusOf_lte (Some current) (lifetime st l) ->
+    statusOf_lte (lifetime st l) (Some new) ->
+    Lifetimes_lte st (replace_lifetime st l new).
+  Proof.
+    repeat intro. unfold lifetime, replace_lifetime. destruct (Nat.eq_dec l0 l).
+    - subst. rewrite iGetPut_eq. assumption.
+    - case_eq (iget l0 st); intros; [ | apply I ].
+      erewrite iGetPut_neq; [ rewrite H2; reflexivity | assumption | eassumption ].
+  Qed.
 
 
-(* l is lte all lifetimes in a set, i.e., it subsumes them *)
-Definition all_lte l (ls : nat -> Prop) lts : Prop :=
-  forall l', ls l' -> statusOf_lte (lifetime lts l) (lifetime lts l').
+  (* l is lte all lifetimes in a set, i.e., it subsumes them *)
+  Definition all_lte l (ls : nat -> Prop) st : Prop :=
+    forall l', ls l' -> statusOf_lte (lifetime st l) (lifetime st l').
 
-(* All lifetimes in a set are finished *)
-Definition all_finished (ls : nat -> Prop) lts : Prop :=
-  forall l, ls l -> lifetime lts l = Some finished.
+  (* All lifetimes in a set are finished *)
+  Definition all_finished (ls : nat -> Prop) st : Prop :=
+    forall l, ls l -> lifetime st l = Some finished.
 
-(* If all lifetime in ls are finished, then l is lte all of them.
-   NOTE: l < length lts is probably not strictly necessary, but removing it
-   would require a different version of nth_error_replace_list_index_neq *)
-Lemma all_lte_finish l ls lts : l < length lts -> all_finished ls lts ->
-                                all_lte l ls (replace_list_index lts l finished).
-Proof.
-  repeat intro. destruct (Nat.eq_dec l' l).
-  - subst. reflexivity.
-  - unfold lifetime.
-    rewrite <- (nth_error_replace_list_index_neq _ l' l); try assumption.
-    unfold all_finished, lifetime in H0.
-    rewrite (H0 l' H1). apply finished_greatest.
-Qed.
+  (* If all lifetime in ls are finished, then l is lte all of them *)
+  Lemma all_lte_finish l ls st :
+    all_finished ls st -> all_lte l ls (replace_lifetime st l finished).
+  Proof.
+    repeat intro. destruct (Nat.eq_dec l' l).
+    - subst. reflexivity.
+    - unfold lifetime, replace_lifetime.
+      rewrite iGetPut_eq.
+      assert (iget l' st = Some finished); [ apply H0; assumption | ].
+      erewrite iGetPut_neq; try eassumption.
+      rewrite H2; reflexivity.
+  Qed.
 
-(* If l has at least started then it is < the # allocated lifetimes *)
-Lemma lte_current_lt_length l lts :
-  statusOf_lte (Some current) (lifetime lts l) -> l < length lts.
-Proof.
-  intro. simpl in H. unfold lifetime, Lifetimes in H.
-  apply nth_error_Some; intro. rewrite H0 in H. assumption.
-Qed.
 
+(* FIXME: remove all this
 
 Lemma subsumes_1_none_inv : forall s n1 n2,
     lifetime s n1 = None ->
@@ -286,28 +330,25 @@ Proof.
   destruct (lifetime s n1); auto. 2: inversion H0.
   destruct s0; auto.
 Qed.
+*)
+
+End LifetimeLens.
+
+
+(** * Lifetime operations *)
 
 Section LifetimeOps.
   Context {Si Ss : Type}.
   Context `{Hlens: Lens Si Lifetimes}.
 
-  (** * Lifetime operations *)
+  (* Create and return a new lifetime as the length of the Lifetimes state *)
   Definition newLifetime : itree (sceE Si) nat :=
-    s <- trigger (Modify id);; (* do read first to use length without subtraction *)
-    trigger (Modify (fun s =>
-                       (lput s ((lget s) ++ [current]))));;
+    s <- trigger (Modify (fun s => iput (length (lget s)) s current));;
     Ret (length (lget s)).
 
+  (* End a lifetime by setting it to finished *)
   Definition endLifetime (l : nat) : itree (sceE Si) unit :=
-    s <- trigger (Modify id);;
-    match nth_error (lget s) l with
-    | Some current =>
-        trigger (Modify (fun s =>
-                           (lput s (replace_list_index
-                                      (lget s)
-                                      l
-                                      finished))));;
-        Ret tt
-    | _ => throw tt
-    end.
+    trigger (Modify (fun s => iput l s finished));;
+    Ret tt.
+
 End LifetimeOps.
