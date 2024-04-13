@@ -28,6 +28,7 @@ Class Lens (A B:Type) : Type :=
   lPutPut: forall a b b', lput (lput a b) b' = lput a b'
   }.
 
+(* A lens into the first projection gives a lens into a pair type *)
 Global Program Instance Lens_fst (A B C : Type) `{Lens A C} : Lens (A * B) C :=
   {|
     lget x := lget (fst x);
@@ -41,6 +42,45 @@ Next Obligation.
 Qed.
 Next Obligation.
   rewrite lPutPut. reflexivity.
+Qed.
+
+
+(* An indexed partial lens is a partial lens for each index in a set Ix *)
+Class IxPartialLens (Ix A B : Type) : Type :=
+  {
+    iget : Ix -> A -> option B;
+    iput : Ix -> A -> B -> A;
+    iGetPut_eq : forall i a b, iget i (iput i a b) = Some b;
+    iGetPut_neq : forall i1 i2 a b1 b2,
+      i1 <> i2 -> iget i1 a = Some b1 ->
+      iget i1 (iput i2 a b2) = iget i1 a;
+    iPutGet : forall i a b, iget i a = Some b -> iput i a b = a;
+    iPutPut_eq : forall i a b, iput i (iput i a b) b = iput i a b;
+    iPutPut : forall i a b0 b1 b2, iget i a = Some b0 ->
+                                   iput i (iput i a b1) b2 = iput i a b2;
+  }.
+
+(* Can compose a Lens with an index partial lens *)
+Global Program Instance Lens_IxPartialLens Ix A B C `{Lens A B} `{IxPartialLens Ix B C} :
+  IxPartialLens Ix A C :=
+  {|
+    iget i a := iget i (lget a);
+    iput i a c := lput a (iput i (lget a) c);
+  |}.
+Next Obligation.
+  rewrite lGetPut. apply iGetPut_eq.
+Qed.
+Next Obligation.
+  rewrite lGetPut. eapply iGetPut_neq; eassumption.
+Qed.
+Next Obligation.
+  rewrite iPutGet; [ | assumption ]. apply lPutGet.
+Qed.
+Next Obligation.
+  rewrite lGetPut. rewrite lPutPut. rewrite iPutPut_eq. reflexivity.
+Qed.
+Next Obligation.
+  rewrite lPutPut. rewrite lGetPut. erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
 
 
@@ -134,6 +174,39 @@ Proof.
   revert n; induction l; intros; [ induction n | destruct n ]; simpl; try reflexivity.
   - inversion H.
   - f_equal. apply IHl. apply Lt.lt_S_n. assumption.
+Qed.
+
+
+(* List indexing is an indexed partial lens *)
+Global Program Instance IxPartialLens_list A : IxPartialLens nat (list A) A :=
+  {|
+    iget i l := nth_error l i;
+    iput i l a := replace_list_index l i a;
+  |}.
+Next Obligation.
+  apply nth_error_replace_list_index_eq.
+Qed.
+Next Obligation.
+  revert i1 i2 H H0; induction a; intros; [ | destruct i1 ].
+  - destruct i1; simpl in H0; discriminate.
+  - destruct i2; [ elimtype False; apply H; reflexivity | ].
+    simpl; reflexivity.
+  - destruct i2; [ simpl; reflexivity | ]. apply IHa.
+    + intro; subst. apply H; reflexivity.
+    + apply H0.
+Qed.
+Next Obligation.
+  apply replace_list_index_eq; assumption.
+Qed.
+Next Obligation.
+  apply replace_list_index_idem.
+Qed.
+Next Obligation.
+  apply replace_list_index_twice.
+  revert i H; induction a; intros; [ | destruct i ].
+  - destruct i; simpl in H; discriminate.
+  - apply Lt.neq_0_lt. simpl. intro; discriminate.
+  - simpl. apply Lt.lt_n_S. apply IHa. assumption.
 Qed.
 
 
