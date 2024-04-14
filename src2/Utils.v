@@ -98,6 +98,18 @@ Class IxPartialLens (Ix A B : Type) : Type :=
                                    iput i (iput i a b1) b2 = iput i a b2;
   }.
 
+
+(* The option type is a trivial partial lens *)
+Global Program Instance IxPartialLens_option A : IxPartialLens unit (option A) A :=
+  {|
+    iget _ opt_a := opt_a;
+    iput _ _ a := Some a;
+  |}.
+Next Obligation.
+  elimtype False. apply H. destruct i1; destruct i2; reflexivity.
+Qed.
+
+
 (* A Lens can be composed with an indexed partial lens *)
 Global Program Instance Lens_IxPartialLens Ix A B C `{Lens A B} `{IxPartialLens Ix B C} :
   IxPartialLens Ix A C :=
