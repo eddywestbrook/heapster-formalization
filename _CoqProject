@@ -24,13 +24,14 @@ src/LifetimePerms.v
 -R src2 Heapster2
 
 src2/Utils.v
-src2/Memory.v
-src2/Lifetime.v
-src2/LifetimePerms.v
-
 src2/Permissions.v
 src2/SepStep.v
 src2/Typing.v
+src2/LensPerms.v
+src2/Lifetime.v
+src2/LifetimePerms.v
+
+src2/Memory.v
 src2/PermType.v
 src2/MemoryPerms.v
 src2/PermTypeProofs.v
