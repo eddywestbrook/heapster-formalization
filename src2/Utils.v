@@ -1,5 +1,9 @@
 (* begin hide *)
-Require Import Coq.Lists.List.
+From Coq Require Import
+     Classes.Morphisms
+     Relations.Relation_Operators
+     Lists.List
+     Arith.PeanoNat.
 
 From ITree Require Import
      ITree
@@ -17,6 +21,40 @@ Import ListNotations.
 Import ITreeNotations.
 Local Open Scope itree_scope.
 (* end hide *)
+
+
+(***
+ *** Helper PreOrder instances
+ ***)
+
+Global Instance PreOrder_trivial {A} : @PreOrder A (fun _ _ => True).
+Proof.
+  constructor; repeat intro; trivial.
+Qed.
+
+Global Instance PreOrder_and {A} (R1 R2 : A -> A -> Prop) `{PreOrder A R1} `{PreOrder A R2} :
+  PreOrder (fun x y => R1 x y /\ R2 x y).
+Proof.
+  constructor; repeat intro.
+  - split; reflexivity.
+  - destruct H1; destruct H2; split; etransitivity; eassumption.
+Qed.
+
+Global Instance PreOrder_impl {A} (R : A -> Prop) : PreOrder (fun x y => R x -> R y).
+Proof.
+  constructor; repeat intro; auto.
+Qed.
+
+Global Instance PreOrder_map_PreOrder {A B} f R `{PreOrder B R} :
+  @PreOrder A (fun x y => R (f x) (f y)).
+Proof.
+  constructor; repeat intro; [ reflexivity | etransitivity; eassumption ].
+Qed.
+
+
+(***
+ *** Lenses and partial lenses
+ ***)
 
 (** * Lens typeclass *)
 Class Lens (A B:Type) : Type :=
@@ -60,7 +98,7 @@ Class IxPartialLens (Ix A B : Type) : Type :=
                                    iput i (iput i a b1) b2 = iput i a b2;
   }.
 
-(* Can compose a Lens with an index partial lens *)
+(* A Lens can be composed with an indexed partial lens *)
 Global Program Instance Lens_IxPartialLens Ix A B C `{Lens A B} `{IxPartialLens Ix B C} :
   IxPartialLens Ix A C :=
   {|
@@ -83,6 +121,86 @@ Next Obligation.
   rewrite lPutPut. rewrite lGetPut. erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
 
+
+(* Types with a default element *)
+Class Default (A:Type) := default_elem : A.
+
+(* Lists have the empty list as a default element *)
+Global Instance Default_List A : Default (list A) := nil.
+
+(* Option types have None as a default element *)
+Global Instance Default_option A : Default (option A) := None.
+
+(* Types with decidable equality *)
+Class DecidableEq (A:Type) := dec_eq : forall (x y : A), {x = y} + {x <> y}.
+
+(* The unit type trivially has decidable equality *)
+Global Program Instance DecidableEq_unit : DecidableEq unit := fun _ _ => left _.
+Next Obligation.
+  destruct H; destruct H0; reflexivity.
+Qed.
+
+(* Natural numbers have decidable equality *)
+Global Instance DecidableEq_nat : DecidableEq nat := Nat.eq_dec.
+
+(* Apply iget to an optional value, returning None if the value is None *)
+Definition iget_opt {Ix A B} `{IxPartialLens Ix A B} ix (opt_x : option A) : option B :=
+  match opt_x with
+  | None => None
+  | Some x => iget ix x
+  end.
+
+(* Apply iput to an optional value, returning a default if the value is None *)
+Definition iput_opt {Ix A B} `{IxPartialLens Ix A B} `{Default A}
+  ix (opt_a : option A) b : A :=
+  match opt_a with
+  | None => iput ix default_elem b
+  | Some a => iput ix a b
+  end.
+
+(* Two indexed partial lenses can be composed if the middle type has a default
+and the index types have decidable equality *)
+Global Program Instance IxPartialLens_IxPartialLens Ix1 Ix2 A B C
+  `{IxPartialLens Ix1 A B} `{IxPartialLens Ix2 B C}
+  `{DecidableEq Ix1} `{DecidableEq Ix2} `{Default B} :
+  IxPartialLens (Ix1 * Ix2) A C :=
+  {|
+    iget '(i1,i2) a := iget_opt i2 (iget i1 a);
+    iput '(i1,i2) a c := iput i1 a (iput_opt i2 (iget i1 a) c);
+  |}.
+Next Obligation.
+  rewrite iGetPut_eq. destruct (iget i a); apply iGetPut_eq.
+Qed.
+Next Obligation.
+  destruct (dec_eq i1 i); [ destruct (dec_eq i2 i0) | ]; subst.
+  - elimtype False; apply H4; reflexivity.
+  - destruct (iget i a); simpl in H5; [ | discriminate ].
+    rewrite iGetPut_eq. simpl. eapply iGetPut_neq; eassumption.
+  - case_eq (iget i1 a); intros; rewrite H6 in H5; simpl in H5; [ | discriminate ].
+    erewrite iGetPut_neq; try eassumption.
+    f_equal. assumption.
+Qed.
+Next Obligation.
+  rewrite iPutGet; [ reflexivity | ].
+  destruct (iget i a); [ | simpl in H4; discriminate ].
+  simpl. simpl in H4. f_equal. symmetry; apply iPutGet; assumption.
+Qed.
+Next Obligation.
+  case_eq (iget i a); intros; simpl.
+  - rewrite iGetPut_eq. simpl. repeat rewrite iPutPut_eq. reflexivity.
+  - rewrite iGetPut_eq. simpl. repeat rewrite iPutPut_eq. reflexivity.
+Qed.
+Next Obligation.
+  revert H4; case_eq (iget i a); simpl; intros; [ | discriminate ].
+  rewrite iGetPut_eq. simpl.
+  erewrite iPutPut; try eassumption.
+  erewrite iPutPut; [ reflexivity | eassumption ].
+Qed.
+
+
+(***
+ *** The indexed partial lens for lists
+ ***)
 
 (** * [replace_list_index] *)
 (** A function for replacing an element in a list, growing the list if needed. *)

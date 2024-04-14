@@ -3,11 +3,8 @@
 From Coq Require Import
      Classes.Morphisms
      Relations.Relation_Operators
-     Logic.JMeq
      Lists.List
-     Arith.PeanoNat
-     Logic.FunctionalExtensionality
-     Lia.
+     Arith.PeanoNat.
 
 From Heapster2 Require Import
      Utils
@@ -25,30 +22,6 @@ From Paco Require Import
 
 Import ListNotations.
 (* end hide *)
-
-Global Instance PreOrder_trivial {A} : @PreOrder A (fun _ _ => True).
-Proof.
-  constructor; repeat intro; trivial.
-Qed.
-
-Global Instance PreOrder_and {A} (R1 R2 : A -> A -> Prop) `{PreOrder A R1} `{PreOrder A R2} :
-  PreOrder (fun x y => R1 x y /\ R2 x y).
-Proof.
-  constructor; repeat intro.
-  - split; reflexivity.
-  - destruct H1; destruct H2; split; etransitivity; eassumption.
-Qed.
-
-Global Instance PreOrder_impl {A} (R : A -> Prop) : PreOrder (fun x y => R x -> R y).
-Proof.
-  constructor; repeat intro; auto.
-Qed.
-
-Global Instance PreOrder_map_PreOrder {A B} f R `{PreOrder B R} :
-  @PreOrder A (fun x y => R (f x) (f y)).
-Proof.
-  constructor; repeat intro; [ reflexivity | etransitivity; eassumption ].
-Qed.
 
 
 Section LifetimePerms.
