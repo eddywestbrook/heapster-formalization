@@ -27,6 +27,24 @@ Import ListNotations.
 (* end hide *)
 
 
+(*** Helper instances for clos_refl_trans ***)
+
+Global Instance Reflexive_clos_refl_trans {A} R : Reflexive (clos_refl_trans A R).
+Proof.
+  intro. apply rt_refl.
+Qed.
+
+Global Instance Transitive_clos_trans {A} R : Transitive (clos_refl_trans A R).
+Proof.
+  repeat intro. eapply rt_trans; eassumption.
+Qed.
+
+Global Instance PreOrder_clos_trans {A} R : PreOrder (clos_refl_trans A R).
+Proof.
+  constructor; typeclasses eauto.
+Qed.
+
+
 Section PLensPerms.
   Context {St Ix Elem} `{IxPLens:IxPartialLens Ix St Elem}.
 
@@ -113,6 +131,56 @@ Section PLensPerms.
     - destruct H2 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
       intro; symmetry; apply iGetPut_neq; try assumption.
       intro; subst; apply H; reflexivity.
+  Qed.
+
+
+  (* A set of indices is self-contained iff writing to any of them only affects
+  other indices in the set *)
+  (*
+  Definition self_contained_ixs (ixs : Ix -> Prop) (st:St) : Prop :=
+    forall ix_in ix_out elem,
+      ixs ix_in -> ~ ixs ix_out ->
+      iget ix_out (iput ix_in st elem) = iget ix_out st.
+   *)
+
+  (* The permission to write to any index in a set *)
+  Program Definition ixplens_multi_write_perm (ixs : Ix -> Prop) : @perm St :=
+    {|
+      pre x := True;
+      rely x y := forall ix, ixs ix -> iget ix x = iget ix y;
+      guar x y :=
+        clos_refl_trans _ (fun x' y' =>
+                             exists ix elem, ixs ix /\ y' = iput ix x' elem) x y;
+      inv x := True
+    |}.
+  Next Obligation.
+    constructor; repeat intro.
+    - reflexivity.
+    - etransitivity; [ apply H | apply H0 ]; eassumption.
+  Qed.
+
+
+  (* A multi-write permission is always separate from a write permission to an
+  index not in the set of the multi-write *)
+  Lemma ixplens_write_multi_write_sep ix ixs :
+    ~ ixs ix -> self_contained_ixs ixs ->
+    ixplens_write_perm ix ⊥ ixplens_multi_write_perm ixs.
+  Proof.
+    intros not_in self_c; constructor; repeat intro.
+    - clear H H0.
+      assert (iget ix x = iget ix y /\ iget ix y <> None) as [? ?];
+        [ | assumption ].
+      induction H1.
+      + destruct H as [ix' [elem [? ?]]]; subst.
+        rewrite iGetPut_neq;
+          [ split; [ reflexivity | assumption ] | | assumption ].
+        intro; subst. apply (not_in H).
+      + split; [ reflexivity | assumption ].
+      + destruct (IHclos_refl_trans1 H2).
+        destruct (IHclos_refl_trans2 H0).
+        split; [ etransitivity | ]; eassumption.
+    - destruct H1 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
+      symmetry; apply self_c; assumption.
   Qed.
 
 End PLensPerms.

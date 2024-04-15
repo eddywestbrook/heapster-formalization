@@ -142,6 +142,13 @@ Next Obligation.
 Qed.
 
 
+(* A set of indices is self-contained iff writing to any index outside the set
+   does not affect any index in the set *)
+Definition self_contained_ixs `{IxPartialLens} (ixs : Ix -> Prop) : Prop :=
+  forall st ix_in ix_out elem,
+    ixs ix_in -> ~ ixs ix_out ->
+    iget ix_in (iput ix_out st elem) = iget ix_in st.
+
 (* Types with a default element *)
 Class Default (A:Type) := default_elem : A.
 
@@ -371,6 +378,25 @@ Proof.
       apply (H0 (Datatypes.S i)).
       apply Lt.lt_n_S. assumption.
 Qed.
+
+Lemma self_contained_list_ixs {A} n : self_contained_ixs (B:=A) (fun i => i >= n).
+Proof.
+  repeat intro. simpl. revert n ix_in ix_out H H0; induction st; intros.
+  - simpl.
+    rewrite (proj2 (nth_error_None _ _));
+      [ rewrite (proj2 (nth_error_None _ _));
+        [ reflexivity | apply Nat.le_0_l ] | ].
+    rewrite repeat_length.
+    admit. (* straightforward *)
+  - destruct ix_in.
+    + assert (0 = n); [ apply (Le.le_n_0_eq n H) | ]; subst.
+      elimtype False; apply H0. apply Nat.le_0_l.
+    + destruct ix_out; [ reflexivity | ]. simpl.
+      destruct n; [ elimtype False; apply H0; apply Nat.le_0_l | ].
+      apply (IHst n).
+      * apply le_S_n. assumption.
+      * intro. apply H0. apply le_n_S. assumption.
+Admitted.
 
 
 (** * itree stuff *)
