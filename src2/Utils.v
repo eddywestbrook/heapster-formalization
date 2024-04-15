@@ -388,7 +388,6 @@ Proof.
         [ reflexivity | apply Nat.le_0_l ] | ].
     rewrite repeat_length.
     transitivity n; [ | assumption ].
-    Print Module Nat.
     destruct (Nat.le_gt_cases n ix_out); [ elimtype False; apply (H0 H1) | ].
     rewrite Nat.add_1_r. assumption.
   - destruct ix_in.
