@@ -151,8 +151,8 @@ Section LifetimeLens.
     intro. eapply iPutGet; assumption.
   Qed.
 
-  Lemma replace_lifetime_twice (st:S) l s0 s1 s2 :
-    lifetime st l = Some s0 ->
+  Lemma replace_lifetime_twice (st:S) l s1 s2 :
+    lifetime st l <> None ->
     replace_lifetime (replace_lifetime st l s1) l s2 = replace_lifetime st l s2.
   Proof.
     unfold lifetime, replace_lifetime; intros.
@@ -256,7 +256,8 @@ Definition subsumes n1 n2 x1 x2 :=
     repeat intro. unfold lifetime, replace_lifetime. destruct (Nat.eq_dec l0 l).
     - subst. rewrite iGetPut_eq. assumption.
     - case_eq (iget l0 st); intros; [ | apply I ].
-      erewrite iGetPut_neq; [ rewrite H2; reflexivity | assumption | eassumption ].
+      erewrite iGetPut_neq; try rewrite H2;
+        [ reflexivity | assumption | intro; discriminate ].
   Qed.
 
   (* Lifetimes_lte implies the length gets no shorter *)
@@ -291,8 +292,8 @@ Definition subsumes n1 n2 x1 x2 :=
     - unfold lifetime, replace_lifetime.
       rewrite iGetPut_eq.
       assert (iget l' st = Some finished); [ apply H0; assumption | ].
-      erewrite iGetPut_neq; try eassumption.
-      rewrite H2; reflexivity.
+      erewrite iGetPut_neq; try rewrite H2;
+        [ reflexivity | assumption | intro; discriminate ].
   Qed.
 
 

@@ -700,7 +700,7 @@ apply H. auto.
       split; [ apply I | ]. repeat intro; elimtype False; assumption.
     - right. split; [ | intros; elimtype False; assumption ].
       unfold end_lifetime.
-      erewrite replace_lifetime_twice; [ | eassumption ].
+      erewrite replace_lifetime_twice; [ | rewrite H0; intro; discriminate ].
       rewrite eq_replace_lifetime; [ | assumption ]. reflexivity.
   Qed.
 

@@ -89,13 +89,13 @@ Class IxPartialLens (Ix A B : Type) : Type :=
     iget : Ix -> A -> option B;
     iput : Ix -> A -> B -> A;
     iGetPut_eq : forall i a b, iget i (iput i a b) = Some b;
-    iGetPut_neq : forall i1 i2 a b1 b2,
-      i1 <> i2 -> iget i1 a = Some b1 ->
-      iget i1 (iput i2 a b2) = iget i1 a;
+    iGetPut_neq : forall i1 i2 a b,
+      i1 <> i2 -> iget i1 a <> None ->
+      iget i1 (iput i2 a b) = iget i1 a;
     iPutGet : forall i a b, iget i a = Some b -> iput i a b = a;
     iPutPut_eq : forall i a b, iput i (iput i a b) b = iput i a b;
-    iPutPut : forall i a b0 b1 b2, iget i a = Some b0 ->
-                                   iput i (iput i a b1) b2 = iput i a b2;
+    iPutPut : forall i a b1 b2, iget i a <> None ->
+                                iput i (iput i a b1) b2 = iput i a b2;
   }.
 
 
@@ -185,12 +185,14 @@ Next Obligation.
 Qed.
 Next Obligation.
   destruct (dec_eq i1 i); [ destruct (dec_eq i2 i0) | ]; subst.
-  - elimtype False; apply H4; reflexivity.
-  - destruct (iget i a); simpl in H5; [ | discriminate ].
+  - elimtype False; auto.
+  - destruct (iget i a); simpl in H5;
+      [ | elimtype False; auto ].
     rewrite iGetPut_eq. simpl. eapply iGetPut_neq; eassumption.
-  - case_eq (iget i1 a); intros; rewrite H6 in H5; simpl in H5; [ | discriminate ].
-    erewrite iGetPut_neq; try eassumption.
-    f_equal. assumption.
+  - case_eq (iget i1 a); intros; rewrite H6 in H5; simpl in H5;
+      [ | elimtype False; auto ].
+    erewrite iGetPut_neq; try rewrite H6;
+      [ reflexivity | assumption | intro; discriminate ].
 Qed.
 Next Obligation.
   rewrite iPutGet; [ reflexivity | ].
@@ -203,9 +205,9 @@ Next Obligation.
   - rewrite iGetPut_eq. simpl. repeat rewrite iPutPut_eq. reflexivity.
 Qed.
 Next Obligation.
-  revert H4; case_eq (iget i a); simpl; intros; [ | discriminate ].
+  revert H4; case_eq (iget i a); simpl; intros; [ | elimtype False; auto ].
   rewrite iGetPut_eq. simpl.
-  erewrite iPutPut; try eassumption.
+  erewrite iPutPut; [ | rewrite H4; intro; discriminate ].
   erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
 
@@ -318,7 +320,7 @@ Next Obligation.
 Qed.
 Next Obligation.
   revert i1 i2 H H0; induction a; intros; [ | destruct i1 ].
-  - destruct i1; simpl in H0; discriminate.
+  - destruct i1; simpl in H0; elimtype False; auto.
   - destruct i2; [ elimtype False; apply H; reflexivity | ].
     simpl; reflexivity.
   - destruct i2; [ simpl; reflexivity | ]. apply IHa.
@@ -334,7 +336,7 @@ Qed.
 Next Obligation.
   apply replace_list_index_twice.
   revert i H; induction a; intros; [ | destruct i ].
-  - destruct i; simpl in H; discriminate.
+  - destruct i; simpl in H; elimtype False; auto.
   - apply Lt.neq_0_lt. simpl. intro; discriminate.
   - simpl. apply Lt.lt_n_S. apply IHa. assumption.
 Qed.
