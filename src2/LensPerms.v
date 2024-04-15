@@ -159,6 +159,22 @@ Section PLensPerms.
     - etransitivity; [ apply H | apply H0 ]; eassumption.
   Qed.
 
+  (* multi_write_perm is monotone wrt set inclusion on ixs *)
+  Lemma monotone_ixplens_multi_write_perm (ixs1 ixs2 : Ix -> Prop) :
+    (forall ix, ixs1 ix -> ixs2 ix) ->
+    ixplens_multi_write_perm ixs1 <= ixplens_multi_write_perm ixs2.
+  Proof.
+    constructor; repeat intro.
+    - apply I.
+    - apply H1. apply H. assumption.
+    - clear H0. induction H1.
+      + destruct H0 as [ix [elem [? ?]]]; subst.
+        apply rt_step; exists ix; exists elem.
+        split; [ apply H; assumption | reflexivity ].
+      + reflexivity.
+      + etransitivity; eassumption.
+    - apply I.
+  Qed.
 
   (* A multi-write permission is always separate from a write permission to an
   index not in the set of the multi-write *)
@@ -182,5 +198,31 @@ Section PLensPerms.
     - destruct H1 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
       symmetry; apply self_c; assumption.
   Qed.
+
+  (* A multi-write permission can be split into a write and a smaller
+  multi-write assuming the set of the smaller multi-write is self-contained *)
+  Lemma ixplens_multi_write_split_write ix ixs :
+    self_contained_ixs ixs ->
+    sep_step (ixplens_multi_write_perm (eq ix \1/ ixs))
+      (ixplens_write_perm ix ** ixplens_multi_write_perm ixs).
+  Proof.
+    intros; apply sep_step_rg; intros.
+    - apply I.
+    - clear H0. induction H1; [ | etransitivity; eassumption ].
+      destruct H0.
+      + destruct H0 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
+        apply rt_step; exists ix; exists elem.
+        split; [ left | ]; reflexivity.
+      + induction H0.
+        * destruct H0 as [ix' [elem [? ?]]]; subst.
+          apply rt_step. exists ix'; exists elem.
+          split; [ right; assumption | reflexivity ].
+        * reflexivity.
+        * etransitivity; eassumption.
+    - split.
+      + intro. apply H1. left; reflexivity.
+      + repeat intro. apply H1. right; assumption.
+  Qed.
+
 
 End PLensPerms.
