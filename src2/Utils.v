@@ -98,6 +98,14 @@ Class IxPartialLens (Ix A B : Type) : Type :=
                                 iput i (iput i a b1) b2 = iput i a b2;
   }.
 
+(* Putting 3 times with a partial lens always simplifies to putting twice,
+because the first put ensures the index has a value so iPutPut can work *)
+Lemma iPutPutPut `{IxPartialLens} i a b1 b2 b3 :
+  iput i (iput i (iput i a b1) b2) b3 = iput i (iput i a b1) b3.
+Proof.
+  apply iPutPut. rewrite iGetPut_eq. intro; discriminate.
+Qed.
+
 
 (* The option type is a trivial partial lens *)
 Global Program Instance IxPartialLens_option A : IxPartialLens unit (option A) A :=

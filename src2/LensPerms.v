@@ -30,19 +30,13 @@ Import ListNotations.
 Section PLensPerms.
   Context {St Ix Elem} `{IxPLens:IxPartialLens Ix St Elem}.
 
-  Lemma iPutPutPut i a b1 b2 b3 :
-    iput i (iput i (iput i a b1) b2) b3 = iput i (iput i a b1) b3.
-  Proof.
-    eapply iPutPut. apply iGetPut_eq.
-  Qed.
-
   (* The permission to write to an ixplens, assuming it already has a value *)
   Program Definition ixplens_write_perm ix : @perm St :=
     {|
       pre x := iget ix x <> None;
       rely x y := iget ix x <> None -> iget ix x = iget ix y;
       guar x y := x = y \/
-                    exists elem1 elem2, y = iput ix (iput ix x elem1) elem2;
+                    iget ix x <> None /\ exists elem, y = iput ix x elem;
       inv x := True
     |}.
   Next Obligation.
@@ -53,11 +47,11 @@ Section PLensPerms.
   Next Obligation.
     constructor; repeat intro.
     - left; reflexivity.
-    - destruct H as [? | H]; [ subst; assumption | ].
-      destruct H0 as [? | [elem3 [elem4 ?]]]; [ subst; right; eassumption | ].
-      destruct H as [elem1 [elem2 ?]]. right; subst.
-      exists elem1. exists elem4.
-      rewrite iPutPutPut. apply iPutPutPut.
+    - destruct H; [ subst; assumption | ].
+      destruct H0 as [? | [? [elem2 ?]]]; [ subst; right; eassumption | ].
+      destruct H as [? [elem1 ?]]. right; subst.
+      split; [ assumption | ].
+      exists elem2. apply iPutPut; assumption.
   Qed.
   Next Obligation.
     rewrite <- (H H0). assumption.
@@ -82,11 +76,43 @@ Section PLensPerms.
   Qed.
 
 
+  (* A write permission is greater than a read permission *)
+  Lemma lte_read_write ix : ixplens_read_perm ix <= ixplens_write_perm ix.
+  Proof.
+    constructor; intros.
+    - apply H0.
+    - apply H0.
+    - inversion H0; reflexivity.
+    - apply I.
+  Qed.
+
   (* Read permissions are always separate *)
   Lemma ixplens_read_read_sep ix1 ix2 : ixplens_read_perm ix1 ⊥ ixplens_read_perm ix2.
   Proof.
     constructor; intros; inversion H1; reflexivity.
   Qed.
 
+  (* Write permissions with different indices are separate *)
+  Lemma ixplens_write_write_sep ix1 ix2 :
+    ix1 <> ix2 -> ixplens_write_perm ix1 ⊥ ixplens_write_perm ix2.
+  Proof.
+    constructor; intros.
+    - destruct H2 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
+      intro; symmetry; apply iGetPut_neq; assumption.
+    - destruct H2 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
+      intro; symmetry; apply iGetPut_neq; try assumption.
+      intro; subst; apply H; reflexivity.
+  Qed.
+
+  (* Write and read with different indices are separate *)
+  Lemma ixplens_write_read_sep ix1 ix2 :
+    ix1 <> ix2 -> ixplens_write_perm ix1 ⊥ ixplens_read_perm ix2.
+  Proof.
+    constructor; intros.
+    - inversion H2; reflexivity.
+    - destruct H2 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
+      intro; symmetry; apply iGetPut_neq; try assumption.
+      intro; subst; apply H; reflexivity.
+  Qed.
 
 End PLensPerms.

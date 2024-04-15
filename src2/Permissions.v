@@ -963,6 +963,14 @@ Section Permissions.
       rewrite (H x y) in H2; inversion H2; reflexivity.
   Qed.
 
+  (* A permission is always separate from a larger one's invperm *)
+  Lemma separate_bigger_invperm p q : p <= q -> invperm (inv q) ⊥ p.
+  Proof.
+    symmetry; apply separate_invperm; intros.
+    eapply inv_guar; [ | eassumption ].
+    eapply guar_inc; eassumption.
+  Qed.
+
 
   (** ** Separating conjunction for permissions *)
   Program Definition sep_conj_perm (p q: perm) : perm :=
@@ -1432,14 +1440,6 @@ Section Permissions.
     rewrite (sep_conj_perm_commut p q).
     rewrite (sep_conj_perm_commut q r).
     apply sep_conj_perm_assoc'; symmetry; assumption.
-  Qed.
-
-
-  Lemma separate_bigger_invperm p q : p <= q -> invperm (inv q) ⊥ p.
-  Proof.
-    symmetry; apply separate_invperm; intros.
-    eapply inv_guar; [ | eassumption ].
-    eapply guar_inc; eassumption.
   Qed.
 
 
