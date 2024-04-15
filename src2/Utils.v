@@ -387,7 +387,10 @@ Proof.
       [ rewrite (proj2 (nth_error_None _ _));
         [ reflexivity | apply Nat.le_0_l ] | ].
     rewrite repeat_length.
-    admit. (* straightforward *)
+    transitivity n; [ | assumption ].
+    Print Module Nat.
+    destruct (Nat.le_gt_cases n ix_out); [ elimtype False; apply (H0 H1) | ].
+    rewrite Nat.add_1_r. assumption.
   - destruct ix_in.
     + assert (0 = n); [ apply (Le.le_n_0_eq n H) | ]; subst.
       elimtype False; apply H0. apply Nat.le_0_l.
@@ -396,7 +399,7 @@ Proof.
       apply (IHst n).
       * apply le_S_n. assumption.
       * intro. apply H0. apply le_n_S. assumption.
-Admitted.
+Qed.
 
 
 (** * itree stuff *)
