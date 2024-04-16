@@ -225,4 +225,26 @@ Section PLensPerms.
   Qed.
 
 
+  (* Multi-write permissions are separate from each other when their index sets
+  are self-contained and disjoint *)
+  Lemma ixplens_multi_write_multi_write_sep (ixs1 ixs2 : Ix -> Prop) :
+    (forall ix, ixs1 ix -> ~ ixs2 ix) ->
+    self_contained_ixs ixs1 -> self_contained_ixs ixs2 ->
+    ixplens_multi_write_perm ixs1 ⊥ ixplens_multi_write_perm ixs2.
+  Proof.
+    intros disj self_c1 self_c2; constructor; repeat intro.
+    - clear H H0. induction H1.
+      + destruct H as [ix' [elem [? ?]]]. subst.
+        symmetry; apply self_c1; [ | intro; eapply disj ]; eassumption.
+      + reflexivity.
+      + etransitivity; eassumption.
+    - clear H H0. induction H1.
+      + destruct H as [ix' [elem [? ?]]]. subst.
+        symmetry; apply self_c2; [ | apply disj ]; assumption.
+      + reflexivity.
+      + etransitivity; eassumption.
+  Qed.
+
+
+
 End PLensPerms.
