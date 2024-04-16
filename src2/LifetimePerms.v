@@ -784,23 +784,18 @@ Section LifetimeRules.
   Definition lowned l ls P Q :=
     lowned_Perms l ls * impl_Perms (lfinished l * rewind l P) Q.
 
-  Lemma sep_lowned_any_ls l ls p :
-    p ⊥ lowned_perm l (fun _ => False) -> p ⊥ lowned_perm l ls.
-  Admitted.
-
 
   Lemma Perms_split_lt p l ls :
-    p ⊥ lowned_perm l (fun _ => False) ->
+    p ⊥ lowned_perm l ls ->
     singleton_Perms p * lowned_Perms l ls
       ⊨ (when l (singleton_Perms p) * after l (singleton_Perms p)) * lowned_Perms l ls.
   Proof.
     intros. unfold lowned_Perms, when, after.
-    rewrite sep_conj_singleton; [ | apply sep_lowned_any_ls; assumption ].
+    rewrite sep_conj_singleton; [ | assumption ].
     rewrite map_singleton_Perms; [ | typeclasses eauto ].
     rewrite map_singleton_Perms; [ | typeclasses eauto ].
     rewrite sep_conj_singleton; [ | apply separate_when_after ].
-    rewrite sep_conj_singleton; [ | apply separate_when_after_lowned;
-                                    apply sep_lowned_any_ls; assumption ].
+    rewrite sep_conj_singleton; [ | apply separate_when_after_lowned; assumption ].
     apply lte_singleton_Perms.
     apply perm_split_lt.
   Qed.
@@ -825,7 +820,7 @@ Section LifetimeRules.
 
   (* The rule for splitting the lifetime of a singleton permission *)
   Lemma lowned_split_lt l ls p Q R :
-    p ⊥ lowned_perm l (fun _ => False) ->
+    p ⊥ lowned_perm l ls -> p ⊥ lowned_perm l (fun _ => False) ->
     singleton_Perms p * lowned l ls Q R
       ⊨ when l (singleton_Perms p)
         * lowned l ls (when l (singleton_Perms p) * Q) (singleton_Perms p * R).
