@@ -11,7 +11,8 @@ From Heapster2 Require Import
      Permissions
      Lifetime
      SepStep
-     Typing.
+     Typing
+     LensPerms.
 
 From ITree Require Import
      ITree
@@ -27,6 +28,9 @@ Import ListNotations.
 Section LifetimePerms.
   Context {S : Type}.
   Context `{Hlens: Lens S Lifetimes}.
+
+  Global Instance IxPartialLens_Lifetimes : IxPartialLens nat S status.
+  Proof. unfold Lifetimes in Hlens. typeclasses eauto. Defined.
 
   (*
   (* Some lifetime permissions only work with other permissions that do not affect lifetimes *)
@@ -104,53 +108,12 @@ apply H. auto.
   Admitted.
    *)
 
+  (* Permission to allocate lifetimes with index >= n *)
+  Definition lalloc_perm (n : nat) : perm :=
+    ixplens_multi_write_perm (fun i => i >= n).
 
-
-  (* Permission to allocate lifetimes with index >= n; also requires any other
-  permissions (via its rely) to respect the lifetime evolution order *)
-  Program Definition lalloc_perm (n : nat) : perm :=
-    {|
-      pre x := length (lget x) = n;
-
-      rely x y :=
-        Lifetimes_lte x y /\
-          (forall n', n' >= n -> lifetime x n' = lifetime y n');
-
-      guar x y :=
-        (exists (ls : Lifetimes), y = lput x ls) /\
-          (forall l, l < n -> lifetime x l = lifetime y l) /\
-          Lifetimes_lte x y;
-
-      inv x := True;
-    |}.
-  Next Obligation.
-    repeat apply PreOrder_and; try (apply PreOrder_map_PreOrder; typeclasses eauto).
-    constructor; repeat intro; [ reflexivity | ].
-    etransitivity; [ apply H | apply H0 ]; assumption.
-  Qed.
-  Next Obligation.
-    constructor; repeat intro.
-    - split; [ exists (lget x); symmetry; apply lPutGet | ].
-      split; reflexivity.
-    - destruct H as [[lts_x ?] [? ?]]. destruct H0 as [[lts_y ?] [? ?]]. subst.
-      repeat rewrite lPutPut in * |- *.
-      split; [ eexists; reflexivity | ].
-      split; [ intros; etransitivity; [ apply H1 | apply H3 ]; assumption | ].
-      intro. etransitivity; [ apply H2 | apply H4 ].
-  Qed.
-  Next Obligation.
-    destruct (proj1 (lt_length_least_None _ _ (length (lget x))) (reflexivity _)).
-    apply lt_length_least_None. split.
-    - symmetry in H1.
-      etransitivity; [ apply H1; unfold ge; reflexivity | assumption ].
-    - intros.
-      assert (i < length (lget y));
-        [ eapply Lt.lt_le_trans; [ | apply Lifetimes_lte_length_lte ]; eassumption | ].
-      pose proof (proj2 (nth_error_Some _ _) H4).
-      simpl. simpl in H4.
-      destruct (nth_error (lget y) i); [ eexists; reflexivity | ].
-      elimtype False; apply H5; reflexivity.
-  Qed.
+  (* Permission to mutate the state of a lifetime *)
+  Definition lmutate_perm (l : nat) : perm := ixplens_write_perm l.
 
 
   (* Ownership of lifetime l, assuming it is currently active and that all
@@ -193,8 +156,26 @@ apply H. auto.
     apply H2; assumption.
   Qed.
 
+  (* lmutate_perm l can sep_step to lowned_perm l with no child lifetimes *)
+  Lemma lmutate_sep_step_lowned l :
+    sep_step (lmutate_perm l) (lowned_perm l (fun _ => False)).
+  Proof.
+    apply sep_step_rg; intros.
+    - apply I.
+    - destruct H. destruct H0 as [? | [? ?]]; subst; [ reflexivity | ].
+      right; split.
+      + intro. unfold lifetime, Lifetimes in H. unfold IxPartialLens_Lifetimes in H0.
+        rewrite H0 in H. apply H.
+      + exists finished. reflexivity.
+    - split; [ | repeat intro; elimtype False; assumption ].
+      destruct H. apply H0. intro.
+      unfold lifetime, Lifetimes in H. unfold IxPartialLens_Lifetimes in H2.
+      rewrite H2 in H. apply H.
+  Qed.
+
 
   (* lowned l is separate from lalloc n when n > l *)
+  (* FIXME: get this working again after having changed lalloc_perm
   Lemma separate_lowned_lalloc_perm l ls n :
     l < n -> lowned_perm l ls ⊥ lalloc_perm n.
   Proof.
@@ -210,7 +191,7 @@ apply H. auto.
       + intros. symmetry; apply end_lifetime_neq; [ | assumption ].
         intro; subst. apply (Lt.lt_not_le l n); assumption.
   Qed.
-
+   *)
 
   Lemma lowned_lowned_separate_h l1 ls1 l2 ls2 x y :
     l1 <> l2 -> inv (lowned_perm l1 ls1) x ->
