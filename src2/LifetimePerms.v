@@ -688,13 +688,18 @@ apply H. auto.
   Qed.
 
 
-  (* If p is separate from lowned then pre p implies pre_set_cur l p *)
-  Lemma lowned_sep_pre_set_cur l p st :
+
+  (* If the invariant and precondition of rewind_perm l p hold then those of p
+  hold when l is finished p is separate from lowned_perm l *)
+  Lemma inv_pre_rewind_inv_pre_p l p st :
     p ⊥ lowned_perm l (fun _ => False) ->
     lifetime st l = Some finished ->
-    inv (rewind_perm l p) st -> pre (rewind_perm l p) st -> pre p st.
+    inv (rewind_perm l p) st ->
+    inv p st /\ (pre (rewind_perm l p) st -> pre p st).
   Proof.
-    intros. simpl in H1, H2. eapply pre_respects; [ | eassumption ].
+    intros. simpl in H1.
+    assert (rely p (replace_lifetime st l current) st);
+      [ | split; [ eapply inv_rely | intro; eapply pre_respects ]; eassumption ].
     apply (sep_l _ _ H); try assumption.
     - simpl. rewrite replace_lifetime_eq.
       split; [ apply I | ]. repeat intro; elimtype False; assumption.
@@ -713,7 +718,7 @@ apply H. auto.
   Proof.
     intro p_sep; constructor; intros.
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? ?]].
-      split; [ apply I | ]. eapply lowned_sep_pre_set_cur; eassumption.
+      split; [ apply I | ]. eapply inv_pre_rewind_inv_pre_p; eassumption.
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? [? [? ?]]]].
       split; [ assumption | ]. apply H8; assumption.
     - destruct H as [? [[? [[? ?] ?]] ?]].
@@ -728,6 +733,42 @@ apply H. auto.
       split; [ | split ]; try assumption.
       symmetry; apply sep_lowned_sep_lfinished. assumption.
   Qed.
+
+
+  (* The sep_step rule for ending a lifetime: if you hold p and an lowned_perm
+  during a lifetime, then you can end it and get an lfinished perm and a rewind
+  perm for p *)
+  (* FIXME: the two conditions below should just be p is separate from arbitrary
+  write permission to l *)
+  Lemma lowned_sep_step_lfinished_rewind l p :
+    p ⊥ lowned_perm l (fun _ => False) ->
+    (forall x, rely p x (replace_lifetime x l current)) ->
+    sep_step (lowned_perm l (fun _ => False) ** p)
+      (lfinished_perm l ** rewind_perm l p).
+  Proof.
+    intros; apply sep_step_rg; intros.
+    - destruct H1 as [? [? ?]]. simpl in H1, H2.
+      split; [ | split; [ eapply inv_pre_rewind_inv_pre_p | symmetry ]; eassumption ].
+      split; [ rewrite H1; apply I | repeat intro; elimtype False; assumption ].
+    - clear H1; assert (x = y); [ | subst; reflexivity ].
+      induction H2; [ | subst; reflexivity ].
+      destruct H1; assumption.
+    - destruct H1 as [? [? ?]]. destruct H2 as [[? ?] ?].
+      split; [ simpl; rewrite H2; intros; assumption | ].
+      assert (rely p (replace_lifetime x l current) (replace_lifetime y l current)).
+      + etransitivity; [ | apply H0 ]. etransitivity; [ | eassumption ].
+        apply (sep_l _ _ H);
+          [ split; [ rewrite replace_lifetime_eq; reflexivity
+                   | repeat intro; elimtype False; assumption ]
+          | assumption | ].
+        right. split; [ | repeat intro; elimtype False; assumption ].
+        unfold end_lifetime. simpl in H1.
+        rewrite replace_lifetime_twice; [ | rewrite H1; intro; discriminate ].
+        symmetry; apply eq_replace_lifetime. assumption.
+      + split; intro; [ eapply inv_rely; eassumption | ].
+        eapply pre_respects; eassumption.
+  Qed.
+
 
 (* End LifetimePerms. *)
 
