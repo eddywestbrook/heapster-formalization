@@ -24,6 +24,17 @@ Local Open Scope itree_scope.
 
 
 (***
+ *** Misc helper lemmas
+ ***)
+
+(* An option that equals a Some is not equal to None *)
+Lemma Some_not_None {A} opt_a (a:A) : opt_a = Some a -> opt_a <> None.
+Proof.
+  intro H; rewrite H; intro; discriminate.
+Qed.
+
+
+(***
  *** Helper PreOrder instances
  ***)
 
@@ -50,6 +61,26 @@ Global Instance PreOrder_map_PreOrder {A B} f R `{PreOrder B R} :
 Proof.
   constructor; repeat intro; [ reflexivity | etransitivity; eassumption ].
 Qed.
+
+
+(*** Helper instances for clos_refl_trans ***)
+
+Global Instance Reflexive_clos_refl_trans {A} R : Reflexive (clos_refl_trans A R).
+Proof.
+  intro. apply rt_refl.
+Qed.
+
+Global Instance Transitive_clos_trans {A} R : Transitive (clos_refl_trans A R).
+Proof.
+  repeat intro. eapply rt_trans; eassumption.
+Qed.
+
+Global Instance PreOrder_clos_trans {A} R : PreOrder (clos_refl_trans A R).
+Proof.
+  constructor; typeclasses eauto.
+Qed.
+
+
 
 
 (***

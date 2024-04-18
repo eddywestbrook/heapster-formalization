@@ -27,31 +27,19 @@ Import ListNotations.
 (* end hide *)
 
 
-(*** Helper instances for clos_refl_trans ***)
-
-Global Instance Reflexive_clos_refl_trans {A} R : Reflexive (clos_refl_trans A R).
-Proof.
-  intro. apply rt_refl.
-Qed.
-
-Global Instance Transitive_clos_trans {A} R : Transitive (clos_refl_trans A R).
-Proof.
-  repeat intro. eapply rt_trans; eassumption.
-Qed.
-
-Global Instance PreOrder_clos_trans {A} R : PreOrder (clos_refl_trans A R).
-Proof.
-  constructor; typeclasses eauto.
-Qed.
-
-
 Section PLensPerms.
   Context {St Ix Elem} `{IxPLens:IxPartialLens Ix St Elem}.
 
-  (* The permission to write to an ixplens, assuming it already has a value *)
-  Program Definition ixplens_write_perm ix : @perm St :=
+
+  (***
+   *** Read and write permissions
+   ***)
+
+  (* The permission to write to an ixplens, assuming it already has a value that
+  satisfies a given precondition *)
+  Program Definition ixplens_write_perm_pre ix (pre : Elem -> Prop) : @perm St :=
     {|
-      pre x := iget ix x <> None;
+      pre x := exists elem, iget ix x = Some elem /\ pre elem;
       rely x y := iget ix x <> None -> iget ix x = iget ix y;
       guar x y := x = y \/
                     iget ix x <> None /\ exists elem, y = iput ix x elem;
@@ -72,14 +60,32 @@ Section PLensPerms.
       exists elem2. apply iPutPut; assumption.
   Qed.
   Next Obligation.
-    rewrite <- (H H0). assumption.
+    rewrite <- H; [ | eapply Some_not_None; eassumption ].
+    eexists; split; eassumption.
+  Qed.
+
+  (* Permission to write to an ixplens that already equals a specific value *)
+  Definition ixplens_write_perm_eq ix elem :=
+    ixplens_write_perm_pre ix (eq elem).
+
+  (* Permission to write to an ixplens that could be any value *)
+  Definition ixplens_write_perm_any ix :=
+    ixplens_write_perm_pre ix (fun _ => True).
+
+  (* Write permissions are monotonic in their precondition *)
+  Lemma monotone_ixplens_write_perm ix (pre1 pre2 : Elem -> Prop) :
+    (forall elem, pre1 elem -> pre2 elem) ->
+    ixplens_write_perm_pre ix pre2 <= ixplens_write_perm_pre ix pre1.
+  Proof.
+    constructor; intros; try assumption.
+    destruct H1 as [elem [? ?]]. eexists; split; [ | apply H ]; eassumption.
   Qed.
 
 
   (* The permission to read from an ixplens, assuming it already has a value *)
-  Program Definition ixplens_read_perm ix : @perm St :=
+  Program Definition ixplens_read_perm_pre ix (pre : Elem -> Prop) : @perm St :=
     {|
-      pre x := iget ix x <> None;
+      pre x := exists elem, iget ix x = Some elem /\ pre elem;
       rely x y := iget ix x <> None -> iget ix x = iget ix y;
       guar x y := x = y;
       inv x := True
@@ -90,12 +96,31 @@ Section PLensPerms.
     - rewrite <- (H H1) in H0. apply H0; assumption.
   Qed.
   Next Obligation.
-    rewrite <- (H H0). assumption.
+    rewrite <- H; [ | eapply Some_not_None; eassumption ].
+    eexists; split; eassumption.
+  Qed.
+
+  (* Permission to read from an ixplens that already equals a specific value *)
+  Definition ixplens_read_perm_eq ix elem :=
+    ixplens_read_perm_pre ix (eq elem).
+
+  (* Permission to read from an ixplens that could be any value *)
+  Definition ixplens_read_perm_any ix :=
+    ixplens_read_perm_pre ix (fun _ => True).
+
+  (* Read permissions are monotonic in their precondition *)
+  Lemma monotone_ixplens_read_perm ix (pre1 pre2 : Elem -> Prop) :
+    (forall elem, pre1 elem -> pre2 elem) ->
+    ixplens_read_perm_pre ix pre2 <= ixplens_read_perm_pre ix pre1.
+  Proof.
+    constructor; intros; try assumption.
+    destruct H1 as [elem [? ?]]. eexists; split; [ | apply H ]; eassumption.
   Qed.
 
 
   (* A write permission is greater than a read permission *)
-  Lemma lte_read_write ix : ixplens_read_perm ix <= ixplens_write_perm ix.
+  Lemma lte_read_write ix pre :
+    ixplens_read_perm_pre ix pre <= ixplens_write_perm_pre ix pre.
   Proof.
     constructor; intros.
     - apply H0.
@@ -105,14 +130,15 @@ Section PLensPerms.
   Qed.
 
   (* Read permissions are always separate *)
-  Lemma ixplens_read_read_sep ix1 ix2 : ixplens_read_perm ix1 ⊥ ixplens_read_perm ix2.
+  Lemma ixplens_read_read_sep ix1 pre1 ix2 pre2 :
+    ixplens_read_perm_pre ix1 pre1 ⊥ ixplens_read_perm_pre ix2 pre2.
   Proof.
     constructor; intros; inversion H1; reflexivity.
   Qed.
 
   (* Write permissions with different indices are separate *)
-  Lemma ixplens_write_write_sep ix1 ix2 :
-    ix1 <> ix2 -> ixplens_write_perm ix1 ⊥ ixplens_write_perm ix2.
+  Lemma ixplens_write_write_sep ix1 pre1 ix2 pre2 :
+    ix1 <> ix2 -> ixplens_write_perm_pre ix1 pre1 ⊥ ixplens_write_perm_pre ix2 pre2.
   Proof.
     constructor; intros.
     - destruct H2 as [? | [? [elem ?]]]; subst; [ reflexivity | ].
@@ -123,8 +149,8 @@ Section PLensPerms.
   Qed.
 
   (* Write and read with different indices are separate *)
-  Lemma ixplens_write_read_sep ix1 ix2 :
-    ix1 <> ix2 -> ixplens_write_perm ix1 ⊥ ixplens_read_perm ix2.
+  Lemma ixplens_write_read_sep ix1 pre1 ix2 pre2 :
+    ix1 <> ix2 -> ixplens_write_perm_pre ix1 pre1 ⊥ ixplens_read_perm_pre ix2 pre2.
   Proof.
     constructor; intros.
     - inversion H2; reflexivity.
@@ -134,14 +160,28 @@ Section PLensPerms.
   Qed.
 
 
-  (* A set of indices is self-contained iff writing to any of them only affects
-  other indices in the set *)
-  (*
-  Definition self_contained_ixs (ixs : Ix -> Prop) (st:St) : Prop :=
-    forall ix_in ix_out elem,
-      ixs ix_in -> ~ ixs ix_out ->
-      iget ix_out (iput ix_in st elem) = iget ix_out st.
-   *)
+  (***
+   *** Read and write permission sets
+   ***)
+
+  (* Dependent write permissions are permissions to write to ix along with
+  permission P to the value that is currently stored at ix *)
+  Definition ixplens_write_dep ix (P : Elem -> Perms) : Perms :=
+    meet_Perms
+      (fun R => exists elem,
+           R = singleton_Perms (ixplens_write_perm_eq ix elem) * (P elem)).
+
+  (* Dependent read permissions are permissions to read from ix along with
+  permission P to the value that is currently stored at ix *)
+  Definition ixplens_read_dep ix (P : Elem -> Perms) : Perms :=
+    meet_Perms
+      (fun R => exists elem,
+           R = singleton_Perms (ixplens_read_perm_eq ix elem) * (P elem)).
+
+
+  (***
+   *** Multi-write permissions = allocation permission
+   ***)
 
   (* The permission to write to any index in a set *)
   Program Definition ixplens_multi_write_perm (ixs : Ix -> Prop) : @perm St :=
@@ -178,9 +218,9 @@ Section PLensPerms.
 
   (* A multi-write permission is always separate from a write permission to an
   index not in the set of the multi-write *)
-  Lemma ixplens_write_multi_write_sep ix ixs :
+  Lemma ixplens_write_multi_write_sep ix pre ixs :
     ~ ixs ix -> self_contained_ixs ixs ->
-    ixplens_write_perm ix ⊥ ixplens_multi_write_perm ixs.
+    ixplens_write_perm_pre ix pre ⊥ ixplens_multi_write_perm ixs.
   Proof.
     intros not_in self_c; constructor; repeat intro.
     - clear H H0.
@@ -201,10 +241,10 @@ Section PLensPerms.
 
   (* A multi-write permission can be split into a write and a smaller
   multi-write assuming the set of the smaller multi-write is self-contained *)
-  Lemma ixplens_multi_write_split_write ix ixs :
+  Lemma ixplens_multi_write_split_write ix pre ixs :
     self_contained_ixs ixs ->
     sep_step (ixplens_multi_write_perm (eq ix \1/ ixs))
-      (ixplens_write_perm ix ** ixplens_multi_write_perm ixs).
+      (ixplens_write_perm_pre ix pre ** ixplens_multi_write_perm ixs).
   Proof.
     intros; apply sep_step_rg; intros.
     - apply I.
@@ -245,6 +285,32 @@ Section PLensPerms.
       + etransitivity; eassumption.
   Qed.
 
+  (* A multi-write permission can be split into two disjoint self-contained
+  multi-write permissions *)
+  Lemma ixplens_multi_write_split (ixs1 ixs2 : Ix -> Prop) :
+    (forall ix, ixs1 ix -> ~ ixs2 ix) ->
+    self_contained_ixs ixs1 -> self_contained_ixs ixs2 ->
+    sep_step (ixplens_multi_write_perm (ixs1 \1/ ixs2))
+      (ixplens_multi_write_perm ixs1 ** ixplens_multi_write_perm ixs2).
+  Proof.
+    intros disj self_c1 self_c2; apply sep_step_rg; intros.
+    - apply I.
+    - clear H. induction H0; [ | etransitivity; eassumption ].
+      destruct H; destruct H; try reflexivity.
+      + destruct H as [ix [elem [? ?]]]. subst. apply rt_step.
+        eexists; eexists; split; [ left; eassumption | reflexivity ].
+      + transitivity y; (eapply guar_inc;
+                         [ eapply monotone_ixplens_multi_write_perm | apply I
+                         | try (apply H); apply H0 ]);
+          intros; left; assumption.
+      + destruct H as [ix [elem [? ?]]]. subst. apply rt_step.
+        eexists; eexists; split; [ right; eassumption | reflexivity ].
+      + transitivity y; (eapply guar_inc;
+                         [ eapply monotone_ixplens_multi_write_perm | apply I
+                         | try (apply H); apply H0 ]);
+          intros; right; assumption.
+    - split; repeat intro; apply H0; [ left | right ]; assumption.
+  Qed.
 
 
 End PLensPerms.
