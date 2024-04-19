@@ -666,12 +666,10 @@ Section LifetimePerms.
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? ?]].
       split; [ apply I | ]. eapply inv_pre_rewind_inv_pre_p; try eassumption.
       + apply lte_p; assumption.
-      + admit.
-(*
-simpl. destruct (pre_inc _ _ lte_p (replace_lifetime x l current)).
-
-simpl. simpl in lte_p. apply lte_p.
-*)
+      + assert (pre (when_perm l p) (replace_lifetime x l current));
+          [ apply lte_p; assumption | ].
+        destruct H7; [ assumption | ].
+        rewrite replace_lifetime_eq in H7. discriminate.
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? [? [? ?]]]].
       split; [ assumption | ]. apply H8; assumption.
     - destruct H as [? [[? [[? ?] ?]] ?]].
@@ -685,8 +683,7 @@ simpl. simpl in lte_p. apply lte_p.
     - destruct H as [? [[? [[? ?] ?]] ?]].
       split; [ | split ]; try assumption.
       symmetry; apply sep_lowned_sep_lfinished. assumption.
-  Admitted.
-  (* Qed. *)
+  Qed.
 
 
   (* The sep_step rule for ending a lifetime: if you hold p and an lowned_perm
