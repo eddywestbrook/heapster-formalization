@@ -103,7 +103,6 @@ Qed.
 Definition Lifetimes := list status.
 
 Section LifetimeLens.
-
   Context {S} `{Lens S Lifetimes}.
 
   (* Get the status of a lifetime *)

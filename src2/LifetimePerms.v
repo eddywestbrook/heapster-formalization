@@ -29,91 +29,16 @@ Section LifetimePerms.
   Context {S : Type}.
   Context `{Hlens: Lens S Lifetimes}.
 
-  Global Instance IxPartialLens_Lifetimes : IxPartialLens nat S status.
+  (* Help Coq infer the IxPartialLens for lifetimes in this section *)
+  Local Instance IxPartialLens_Lifetimes : IxPartialLens nat S status.
   Proof. unfold Lifetimes in Hlens. typeclasses eauto. Defined.
-
-  (*
-  (* Some lifetime permissions only work with other permissions that do not affect lifetimes *)
-  Record nonLifetime p : Prop :=
-    {
-      nonLT_inv : forall x lts, inv p x -> inv p (lput x lts);
-      nonLT_guar : forall x y lts, inv p x -> guar p x y -> guar p (lput x lts) (lput y lts);
-      nonLT_guar_eq : forall x y, inv p x -> guar p x y -> lget x = lget y;
-    }.
-
-  (*
-  Definition nonLifetime p : Prop :=
-    (* rely does not tolerate lifetimes going wrong *)
-    (* (forall x y, rely p x y -> Lifetimes_lte (lget (fst (proj1_sig x))) (lget (fst (proj1_sig y)))) /\ *)
-      (* guar doesn't allow for lifetime changes *)
-    (forall x y, inv p x -> guar p x y -> lget x = lget y).
-   *)
-
-  (*
-  Lemma nonLifetime_restrict c c' Hspred p :
-    nonLifetime c' p ->
-    nonLifetime c (restrict _ (interp_LifetimeClauses c) (interp_LifetimeClauses c') Hspred p).
-  Proof.
-    repeat intro.
-    cbn in *. red in H, H0. destruct x, y, x, x0.
-    specialize (H _ _ H0). cbn in *. auto.
-  Qed.
-   *)
-
-  Definition nonLifetime_pred (pred : S -> Prop) : Prop :=
-    forall x lts, pred x -> pred (lput x lts).
-
-  Lemma nonLifetime_invperm pred : nonLifetime_pred pred -> nonLifetime (invperm pred).
-  Proof.
-    split; repeat intro.
-    - apply H. assumption.
-    - inversion H1; reflexivity.
-    - inversion H1; reflexivity.
-  Qed.
-
-
-  Lemma nonLifetime_sep_conj p q : nonLifetime p -> nonLifetime q ->
-                                   nonLifetime (p ** q).
-  Proof.
-    constructor; intros.
-    - destruct H1 as [? [? ?]].
-      split; [ | split ]; try assumption; eapply nonLT_inv; eassumption.
-    - induction H2.
-      + destruct H1 as [? [? ?]].
-        destruct H2; apply t_step; [ left | right ]; eapply nonLT_guar; eassumption.
-      + etransitivity; [ apply IHclos_trans1; assumption | ].
-        apply IHclos_trans2.
-        eapply inv_guar; eassumption.
-    - induction H2.
-      + destruct H1 as [? [? ?]].
-        destruct H2;
-          [ eapply (nonLT_guar_eq _ H) | eapply (nonLT_guar_eq _ H0) ]; eassumption.
-      + etransitivity; [ apply IHclos_trans1; assumption | ].
-        apply IHclos_trans2. eapply inv_guar; eassumption.
-  Qed.
-
-  (* FIXME: this no longer holds as-is because the smaller permission could have
-     a bigger invariant
-
-  Lemma nonLifetime_lte p q : p <= q -> nonLifetime q -> nonLifetime p.
-  Proof.
-    repeat intro. apply H0.
-    - eapply inv_inc; try eassumption.
-apply H. auto.
-  Qed.
-   *)
-
-  Lemma nonLifetime_bottom : nonLifetime bottom_perm.
-  Proof.
-  Admitted.
-   *)
 
   (* Permission to allocate lifetimes with index >= n *)
   Definition lalloc_perm (n : nat) : perm :=
     ixplens_multi_write_perm (fun i => i >= n).
 
   (* Permission to mutate the state of a lifetime *)
-  Definition lmutate_perm (l : nat) : perm := ixplens_write_perm l.
+  Definition lmutate_perm (l : nat) : perm := ixplens_write_perm_any l.
 
 
   (* Ownership of lifetime l, assuming it is currently active and that all
@@ -642,6 +567,45 @@ apply H. auto.
       inv x := inv p (replace_lifetime x l current);
     |}.
 
+  (* NOTE: rewind_perm is NOT monotone wrt its permission because preserving the
+  stronger precondition (the rely of rewind_perm for the larger permission) does
+  not imply that the weaker precondition (for the smaller permission) is
+  preserved *)
+  (*
+  Lemma monotone_rewind_perm l p1 p2 :
+    p1 <= p2 -> rewind_perm l p1 <= rewind_perm l p2.
+   *)
+
+  (* Rewind permissions are always separate *)
+  Lemma rewind_rewind_sep l1 p1 l2 p2 : rewind_perm l1 p1 ⊥ rewind_perm l2 p2.
+  Proof.
+    constructor; intros; inversion H1; reflexivity.
+  Qed.
+
+  Lemma rewind_dup l p :
+    eq_perm (rewind_perm l p) (rewind_perm l p ** rewind_perm l p).
+  Proof.
+    apply dup_self_sep. apply rewind_rewind_sep.
+  Qed.
+
+
+  (* Rewinding a conjunction is no bigger than a conjunction of rewinds for
+  separate permissions. Note that the other direction does not necessarily hold
+  because the rely of rewind_perm l (p1 ** p2) preserves the conjunction of the
+  preconditions of p1 and p2 which does not imply that they are each preserved
+  individually. *)
+  Lemma rewind_conj_lte l p1 p2 :
+    p1 ⊥ p2 -> rewind_perm l (p1 ** p2) <= rewind_perm l p1 ** rewind_perm l p2.
+  Proof.
+    intro sep; constructor; repeat intro; try assumption.
+    - destruct H0 as [[? ?] [? ?]]. split; intros.
+      + destruct H4 as [? [? ?]]. split; [ | split ]; auto.
+      + destruct H4. split; auto.
+    - inversion H0; reflexivity.
+    - destruct H as [? [? ?]]; split; [ | split ]; auto.
+  Qed.
+
+
   (* Rewinding a when_perm is the same as rewinding the perm it contains *)
   Lemma rewind_when_perm l p :
     eq_perm (rewind_perm l (when_perm l p)) (rewind_perm l p).
@@ -690,16 +654,24 @@ apply H. auto.
       rewrite eq_replace_lifetime; [ | assumption ]. reflexivity.
   Qed.
 
-  (* If l is finished then we can recover a permission from an after_perm and a
-  rewind_perm, assuming that permission is separate from lowned *)
-  Lemma lfinished_after_perm l p :
-    p ⊥ lowned_perm l (fun _ => False) ->
+  (* If l is finished then we can recover a permission from an after_perm and
+  any rewind_perm of a greater permission, assuming that permission is separate
+  from lowned *)
+  Lemma lfinished_after_perm l p p' :
+    p ⊥ lowned_perm l (fun _ => False) -> when_perm l p <= p' ->
     lfinished_perm l ** p <=
-      lfinished_perm l ** (rewind_perm l p ** after_perm l p).
+      lfinished_perm l ** (rewind_perm l p' ** after_perm l p).
   Proof.
-    intro p_sep; constructor; intros.
+    intros p_sep lte_p; constructor; intros.
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? ?]].
-      split; [ apply I | ]. eapply inv_pre_rewind_inv_pre_p; eassumption.
+      split; [ apply I | ]. eapply inv_pre_rewind_inv_pre_p; try eassumption.
+      + apply lte_p; assumption.
+      + admit.
+(*
+simpl. destruct (pre_inc _ _ lte_p (replace_lifetime x l current)).
+
+simpl. simpl in lte_p. apply lte_p.
+*)
     - destruct H as [? [[? [? ?]] ?]]. destruct H0 as [? [? [? [? ?]]]].
       split; [ assumption | ]. apply H8; assumption.
     - destruct H as [? [[? [[? ?] ?]] ?]].
@@ -713,7 +685,8 @@ apply H. auto.
     - destruct H as [? [[? [[? ?] ?]] ?]].
       split; [ | split ]; try assumption.
       symmetry; apply sep_lowned_sep_lfinished. assumption.
-  Qed.
+  Admitted.
+  (* Qed. *)
 
 
   (* The sep_step rule for ending a lifetime: if you hold p and an lowned_perm
@@ -823,21 +796,57 @@ Section LifetimeRules.
   Qed.
 
   Lemma rewind_conj l P Q :
-    eq_Perms (rewind l (P * Q)) (rewind l P * rewind l Q).
+    rewind l (P * Q) ⊨ rewind l P * rewind l Q.
+  Proof.
+    repeat intro. simpl in H.
+    destruct H as [rew_pq [[pq [[p0 [q [? [? [? ?]]]]] ?]] ?]]; subst.
+    rewrite rewind_dup in H4.
+    exists (rewind_perm l pq). exists (rewind_perm l pq).
+    split; [ | split; [ | split ]].
+    - eexists; split; [ | reflexivity ]. eexists; split; [ | reflexivity ].
+      eapply Perms_upwards_closed; [ eassumption | ].
+      etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
+    - eexists; split; [ | reflexivity ]. eexists; split; [ | reflexivity ].
+      eapply Perms_upwards_closed; [ eassumption | ].
+      etransitivity; [ apply lte_r_sep_conj_perm | eassumption ].
+    - assumption.
+    - apply rewind_rewind_sep.
+  Qed.
+
+  Lemma rewind_when_sep_after l p q :
+    when_perm l p <= q ->
+    rewind_perm l q ⊥ after_perm l p.
   Admitted.
 
-  Lemma lfinished_distrib l P Q :
-    eq_Perms (lfinished l * (P * Q)) ((lfinished l * P) * (lfinished l * Q)).
+  Lemma lfinished_after_sep l p : lfinished_perm l ⊥ after_perm l p.
   Admitted.
 
-  Lemma impl_Perms_apply (P Q : @Perms S) : P * impl_Perms P Q ⊨ Q.
+  Lemma lfinished_rewind_sep l1 l2 p : lfinished_perm l1 ⊥ rewind_perm l2 p.
   Admitted.
 
   Lemma lfinished_after l p :
     p ⊥ lowned_perm l (fun _ => False) ->
     lfinished l * (rewind l (when l (singleton_Perms p)) * after l (singleton_Perms p))
     ⊨ singleton_Perms p.
-  Admitted.
+  Proof.
+    intros. unfold lfinished, rewind, when, after.
+    rewrite (map_singleton_Perms (after_perm l)); [ | typeclasses eauto ].
+    rewrite (map_singleton_Perms (when_perm l)); [ | typeclasses eauto ].
+    rewrite mapPerms_as_meet.
+    rewrite sep_conj_Perms_meet_commute.
+    rewrite (sep_conj_Perms_commut (singleton_Perms (lfinished_perm l))).
+    rewrite sep_conj_Perms_meet_commute.
+    apply meet_Perms_max.
+    intros PQR [PQ [? [P [? [when_p [? ?]]]]]]; subst.
+    rewrite sep_conj_singleton; [ | apply rewind_when_sep_after; assumption ].
+    rewrite sep_conj_singleton.
+    - apply lte_singleton_Perms.
+      rewrite (sep_conj_perm_commut _ (lfinished_perm l)).
+      etransitivity; [ apply lte_r_sep_conj_perm
+                     | apply lfinished_after_perm; assumption ].
+    - symmetry; apply sep_conj_perm_separate;
+        [ apply lfinished_rewind_sep | apply lfinished_after_sep ].
+  Qed.
 
 
   (* The rule for splitting the lifetime of a singleton permission *)
@@ -860,9 +869,15 @@ Section LifetimeRules.
     rewrite <- (sep_conj_Perms_assoc _ (after l (singleton_Perms p))).
     apply sep_conj_Perms_monotone; [ reflexivity | ].
     refine (proj1 (adjunction _ _ _) _).
-    rewrite rewind_conj.
+    (* FIXME: set up the right Proper instances to make this use rewriting *)
+    etransitivity;
+      [ eapply sep_conj_Perms_monotone; [ reflexivity | ];
+        eapply sep_conj_Perms_monotone; [ reflexivity | ];
+        apply rewind_conj
+      | ].
     rewrite (sep_conj_Perms_commut (rewind l _) (rewind l Q)).
-    rewrite lfinished_distrib.
+    rewrite lfinished_dup at 2.
+    rewrite (sep_conj_Perms_distrib (lfinished l) (lfinished l)).
     rewrite <- (sep_conj_Perms_assoc (after l (singleton_Perms p))).
     rewrite (sep_conj_Perms_assoc (impl_Perms _ _)).
     rewrite (sep_conj_Perms_commut _ (lfinished l * rewind l (when l _))).

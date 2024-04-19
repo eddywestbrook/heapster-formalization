@@ -1766,6 +1766,24 @@ Section Permissions.
   Definition mapPerms (f : perm -> perm) (P : Perms) : Perms :=
     mkPerms (fun y => exists x, in_Perms P x /\ y = f x).
 
+  Global Instance Proper_eq_Perms_mapPerms f :
+    Proper (eq_Perms ==> eq_Perms) (mapPerms f).
+  Admitted.
+
+  (* We could equivalently have defined mapPerms as a meet *)
+  Lemma mapPerms_as_meet f P :
+    eq_Perms (mapPerms f P)
+      (meet_Perms (fun R => exists p, in_Perms P p /\ R = singleton_Perms (f p))).
+  Proof.
+    split; repeat intro.
+    - destruct H as [FP [[q [? ?]] ?]]; subst.
+      exists (f q). split; [ | assumption ].
+      exists q; split; [ assumption | reflexivity ].
+    - destruct H as [fq [[q [? ?]] ?]]; subst.
+      exists (singleton_Perms (f q)). split; [ | assumption ].
+      eexists; split; [ eassumption | reflexivity ].
+  Qed.
+
   (* f p is in mapPerms f P iff p is in P *)
   Lemma in_mapPerms f P p : in_Perms P p -> in_Perms (mapPerms f P) (f p).
   Proof.
@@ -1773,7 +1791,8 @@ Section Permissions.
     exists p. split; [ assumption | reflexivity ].
   Qed.
 
-  (* Mapping a singleton_Perms is the same as applying the function *)
+  (* Mapping a singleton_Perms is the same as applying the function when the
+     function is monotonic *)
   Lemma map_singleton_Perms f (p : perm) `{Proper _ (lte_perm ==> lte_perm) f} :
     eq_Perms (mapPerms f (singleton_Perms p)) (singleton_Perms (f p)).
   Proof.
@@ -1873,6 +1892,7 @@ Section Permissions.
     intros. exists p, q. split; [| split; [| split]]; auto. reflexivity.
   Qed.
 
+  (* Conjunction on permission sets is commutative *)
   Lemma sep_conj_Perms_commut : forall P Q, P * Q ≡ Q * P.
   Proof.
     split; repeat intro.
@@ -1886,6 +1906,7 @@ Section Permissions.
       symmetry; auto.
   Qed.
 
+  (* Helper lemma for associativity of conjunction on permission sets *)
   Lemma sep_conj_Perms_assoc_lte P Q R : P * (Q * R) ⊑ (P * Q) * R.
   Proof.
     intros pqr H.
@@ -1921,6 +1942,7 @@ Section Permissions.
         apply separate_bigger_invperm. assumption.
   Qed.
 
+  (* Conjunction on Perms sets is associative *)
   Lemma sep_conj_Perms_assoc P Q R : P * (Q * R) ≡ (P * Q) * R.
   Proof.
     split; [ apply sep_conj_Perms_assoc_lte | ].
@@ -1931,6 +1953,19 @@ Section Permissions.
     apply sep_conj_Perms_assoc_lte.
   Qed.
 
+  (* Helper lemma to distribute conjunctions over each other *)
+  Lemma sep_conj_Perms_distrib P1 P2 Q1 Q2 :
+    eq_Perms ((P1 * P2) * (Q1 * Q2)) ((P1 * Q1) * (P2 * Q2)).
+  Proof.
+    rewrite (sep_conj_Perms_commut P1 P2).
+    rewrite (sep_conj_Perms_assoc _ Q1 Q2).
+    rewrite <- (sep_conj_Perms_assoc P2 P1).
+    rewrite (sep_conj_Perms_commut P2 (P1 * Q1)).
+    rewrite <- (sep_conj_Perms_assoc _ P2 Q2).
+    reflexivity.
+  Qed.
+
+  (* The conjunction with a meet is another meet *)
   Lemma sep_conj_Perms_meet_commute : forall (Ps : Perms -> Prop) P,
       (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = P' * P /\ Ps P').
   Proof.
@@ -1992,6 +2027,27 @@ Section Permissions.
   (** Separating implication, though we won't be using it. *)
   Definition impl_Perms P Q := meet_Perms (fun R => R * P ⊨ Q).
 
+  (* impl_Perms is covariant in its second argument and contravariant in its
+     first argument *)
+  Global Instance Proper_lte_Perms_impl_Perms :
+    Proper (lte_Perms --> lte_Perms ==> lte_Perms) impl_Perms.
+  Proof.
+    intros P1 P2 lte_P Q1 Q2 lte_Q.
+    apply meet_Perms_max; intros. apply lte_meet_Perms.
+    exists P. split; [ | reflexivity ].
+    etransitivity; [ | apply lte_Q ].
+    etransitivity; [ | apply H ].
+    apply sep_conj_Perms_monotone; [ reflexivity | assumption ].
+  Qed.
+
+  (* impl_Perms is Proper wrt permission set equality *)
+  Global Instance Proper_eq_Perms_impl_Perms :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) impl_Perms.
+  Proof.
+    intros P1 P2 [? ?] Q1 Q2 [? ?].
+    split; apply Proper_lte_Perms_impl_Perms; assumption.
+  Qed.
+
   (** A standard property about separating conjunction and implication. *)
   Lemma adjunction : forall P Q R, P * Q ⊨ R <-> P ⊨ (impl_Perms Q R).
   Proof.
@@ -2003,6 +2059,41 @@ Section Permissions.
       rewrite sep_conj_Perms_meet_commute.
       apply meet_Perms_max. intros P' [? [? ?]]. subst. auto.
   Qed.
+
+  (* bottom implies P is the same as P *)
+  Lemma bottom_impl_Perms_eq P : eq_Perms (impl_Perms bottom_Perms P) P.
+  Proof.
+    split.
+    - apply lte_meet_Perms. exists P.
+      rewrite sep_conj_Perms_commut. rewrite sep_conj_Perms_bottom_identity.
+      split; reflexivity.
+    - apply meet_Perms_max; intros.
+      rewrite sep_conj_Perms_commut in H.
+      rewrite sep_conj_Perms_bottom_identity in H. assumption.
+  Qed.
+
+  (* An impl_Perms permission can be partially applied *)
+  Lemma impl_Perms_partial_apply P1 P2 Q :
+    P1 * impl_Perms (P1 * P2) Q ⊨ impl_Perms P2 Q.
+  Proof.
+    rewrite sep_conj_Perms_commut. unfold impl_Perms.
+    rewrite sep_conj_Perms_meet_commute.
+    apply meet_Perms_max. intros PQ [Q' [? ?]]; subst.
+    apply lte_meet_Perms.
+    eexists; split; [ | reflexivity ].
+    rewrite <- sep_conj_Perms_assoc. assumption.
+  Qed.
+
+  Lemma impl_Perms_apply P Q : P * impl_Perms P Q ⊨ Q.
+  Proof.
+    transitivity (impl_Perms bottom_Perms Q);
+      [ | rewrite bottom_impl_Perms_eq; reflexivity ].
+    etransitivity; [ | apply impl_Perms_partial_apply ].
+    rewrite (sep_conj_Perms_commut P bottom_Perms).
+    rewrite sep_conj_Perms_bottom_identity.
+    reflexivity.
+  Qed.
+
 
   (* (** * TODO: least fixpoints? *) *)
   (* (** The meet of a TODO *) *)
