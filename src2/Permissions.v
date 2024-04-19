@@ -945,6 +945,18 @@ Section Permissions.
   (*   intros. red in H. split; auto. *)
   (* Qed. *)
 
+  (* If the guarantee of q is equality then p is separate from q if the
+     guarantee of p satisfies the rely of q *)
+  Lemma sep_guar_eq_bottom p q :
+    guar_eq q bottom_perm ->
+    (forall x y, inv q x -> guar p x y -> rely q x y) ->
+    separate p q.
+  Proof.
+    constructor; intros.
+    - assert (x = y); [ apply H; assumption | subst; reflexivity ].
+    - apply H0; assumption.
+  Qed.
+
   (* If p preserves pred then p _|_ invperm pred *)
   Lemma separate_invperm p (pred : config -> Prop) :
     (forall x y, pred x -> guar p x y -> pred y) ->

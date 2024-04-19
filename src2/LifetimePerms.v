@@ -816,10 +816,15 @@ Section LifetimeRules.
   Admitted.
 
   Lemma lfinished_after_sep l p : lfinished_perm l ⊥ after_perm l p.
+  Proof.
   Admitted.
 
   Lemma lfinished_rewind_sep l1 l2 p : lfinished_perm l1 ⊥ rewind_perm l2 p.
-  Admitted.
+  Proof.
+    apply sep_guar_eq_bottom;
+      [ split; repeat intro; inversion H; reflexivity | ].
+    intros. inversion H0. reflexivity.
+  Qed.
 
   Lemma lfinished_after l p :
     p ⊥ lowned_perm l (fun _ => False) ->
