@@ -58,6 +58,7 @@ Proof.
   unfold throw. rewritebisim @bind_vis. apply throw_vis.
 Qed.
 
+
 (** * Stuttering bisimulation *)
 Section bisim.
   Context {config specConfig : Type}.
@@ -172,9 +173,17 @@ Section bisim.
     eapply sep_step_inv; eassumption.
   Qed.
 
+  (* The input permission of sbuter can be strenghtened using entailment, as long
+  as the precondition is preserved *)
+  Lemma sbuter_entails_left {R1 R2} p p' (Q : R1 -> R2 -> Perms) t s c1 c2 :
+    p ⊢ p' -> pre p (c1,c2) -> sbuter p' Q t c1 s c2 -> sbuter p Q t c1 s c2.
+  Proof.
+    intros. eapply sbuter_sep_step_left; try apply entails_perm_sep_step; eassumption.
+  Qed.
+
   (* The output permission set of sbuter can be weakened to a larger set *)
   Lemma sbuter_lte {R1 R2} p Q Q' (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) c1 c2 :
-    sbuter p Q t c1 s c2 -> (forall r1 r2, Q r1 r2 ⊨ Q' r1 r2) -> sbuter p Q' t c1 s c2.
+    sbuter p Q t c1 s c2 -> (forall r1 r2, Q r1 r2 ⊒ Q' r1 r2) -> sbuter p Q' t c1 s c2.
   Proof.
     revert p Q Q' t s c1 c2. pcofix CIH. intros p Q Q' t s c1 c2 Htyping Hlte.
     punfold Htyping. pstep.
@@ -185,132 +194,57 @@ Section bisim.
       + destruct (H2 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
   Qed.
 
-  (* The input permission of sbuter can be strengthened to a stronger one *)
-  (*
-  Lemma sbuter_lte_left {R1 R2} p p' Q (t : itree (sceE config) R1)
+  (* The output permission set of sbuter can be weakened by entailment *)
+  Lemma sbuter_entails_right {R1 R2} p Q Q' (t : itree (sceE config) R1)
     (s : itree (sceE specConfig) R2) c1 c2 :
-    pre p' (c1, c2) -> inv p' (c1, c2) ->
-    sbuter p Q t c1 s c2 -> p <= p' -> sbuter p' Q t c1 s c2.
+    sbuter p Q t c1 s c2 -> (forall r1 r2, Q r1 r2 ⊨ Q' r1 r2) -> sbuter p Q' t c1 s c2.
   Proof.
-    revert p p' Q t s c1 c2. pcofix CIH. intros p p' Q t s c1 c2 Hpre Hinv Htyping Hlte.
+    revert p Q Q' t s c1 c2. pcofix CIH. intros p Q Q' t s c1 c2 Htyping Hent.
     punfold Htyping. pstep.
-    revert p' Hpre Hinv Hlte; induction Htyping; intros;
-      pclearbot; try solve [econstructor; eauto].
-    - constructor; try assumption. eapply Perms_upwards_closed; eassumption.
-    - eapply sbuter_gen_sep_step; try assumption.
-      + eapply sep_step_lte; eassumption.
-      + apply IHHtyping.
-        * split; [ apply I | ].
-    - econstructor; try assumption.
-      + eapply guar_inc; eassumption.
-      + eapply sep_step_lte; eassumption.
-      + apply sbuter_gen_pre_inv in Htyping.
-        destruct Htyping; [ subst; econstructor | destruct H3 ].
-        apply IHHtyping.
-        * split; [ constructor | assumption ].
-        * split; [ | split ].
-          -- eapply (inv_guar p'0); [ | eassumption ].
-             eapply guar_inc; eassumption.
-          -- assumption.
-          -- symmetry; eapply sep_step_sep; [ eassumption | ].
-             symmetry; eapply separate_bigger_invperm. assumption.
-        * apply lte_r_sep_conj_perm.
-    - econstructor; try assumption.
-      + eapply guar_inc; eassumption.
-      + eapply sep_step_lte; eassumption.
-      + apply sbuter_gen_pre_inv in Htyping.
-        destruct Htyping; [ rewrite H3; econstructor | destruct H3 ].
-        apply IHHtyping.
-        * split; [ constructor | assumption ].
-        * split; [ | split ].
-          -- eapply (inv_guar p'0); [ | eassumption ].
-             eapply guar_inc; eassumption.
-          -- assumption.
-          -- symmetry; eapply sep_step_sep; [ eassumption | ].
-             symmetry; eapply separate_bigger_invperm. assumption.
-        * apply lte_r_sep_conj_perm.
-  Admitted.
-   *)
+    induction Htyping; pclearbot; try solve [econstructor; eauto].
+    - destruct (Hent r1 r2 p H1) as [q [? ?]].
+      apply (sbuter_gen_sep_step _ _ _ _ _ _ _ q);
+        [ assumption | assumption | apply entails_perm_sep_step; assumption | ].
+      destruct (entails_pred p q H3 (c1,c2)); [ split; assumption | ].
+      constructor; auto.
+    - econstructor 12; eauto; intros.
+      + destruct (H1 b1). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
+      + destruct (H2 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
+  Qed.
 
-  (*
-  Lemma bisim_spred_lte {R1 R2} (spred spred' : config * specConfig -> Prop) p Q
-        (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2)
-        c1 c2 (Hspred': forall x, spred' x -> spred x) :
-    bisim spred' (restrict _ _ _ Hspred' p) Q t c1 s c2 ->
-    spred' (c1, c2) ->
-    bisim spred
-          p
-          Q
-          (* (fun spred'' Hspred'' r1 r2 => Restrict _ _ _ Hspred'' (Restrict _ _ _ Hspred' (Q r1 r2))) *)
-                                                 (* Q spred'' (fun x Hx => (Hspred' x (Hspred'' x Hx)))) *)
-          t c1 s c2.
-  Proof.
-    (* Set Printing All. *)
-    revert spred p Q t s c1 c2 spred' Hspred'. pcofix CIH.
-    intros spred p Q t s c1 c2 spred' Hspred' Hbisim Hc1c2.
-    punfold Hbisim. pstep.
-    remember (restrict _ _ _ _ p).
-    revert spred p Hspred' Heqp0.
-    revert Hc1c2 CIH.
-    induction Hbisim; intros; subst.
-    - econstructor 1. Unshelve. 3: auto.
-      + cbn. erewrite (proof_irrelevance _ (Hspred' (c1, c2) _)). apply H.
-      + eapply Perms_upwards_closed1; eauto. unfold hlte_perm1. reflexivity.
-    - constructor 2.
-    - econstructor 3. apply H.
-      eapply IHHbisim; eauto.
-      (* erewrite (proof_irrelevance _ (Hspred' (c1, c2) _)). apply H. *)
-    - econstructor 4. apply H.
-      eapply IHHbisim; eauto.
-    - econstructor 5.
-      + cbn. apply H.
-      + pclearbot. right. eapply CIH; eauto.
-    - econstructor 6.
-      + clear IHHbisim CIH. apply H.
-      + clear IHHbisim CIH. apply H0.
-      + clear IHHbisim. cbn. repeat intro. admit.
-      + eapply IHHbisim. apply Hf. auto. admit.
-    - econstructor 7.
-      + clear IHHbisim CIH. apply H.
-      + clear IHHbisim CIH. apply H0.
-      + clear IHHbisim. cbn. repeat intro. admit.
-      + eapply IHHbisim; auto. admit.
-    - econstructor 8; eauto.
-      + clear CIH. apply H.
-      + clear CIH. apply H0.
-      + cbn. repeat intro. admit.
-      + pclearbot. right. eapply CIH; eauto. admit.
-    - econstructor 9; eauto.
-    (*   cbn. erewrite (proof_irrelevance _ (Hspred' (c1, c2) _)). apply H. *)
-    (* - econstructor 10; eauto. *)
-    (*   cbn. erewrite (proof_irrelevance _ (Hspred' (c1, c2) _)). apply H. *)
-    (* - econstructor 11; eauto. *)
-    (*   + cbn. erewrite (proof_irrelevance _ (Hspred' (c1, c2) _)). apply H. *)
-    (*   + intros b. destruct (H0 b). pclearbot. eauto. *)
-    (*   + intros b. destruct (H1 b). pclearbot. eauto. *)
 
-    (*     Unshelve. all: auto. *)
-  Admitted.
-   *)
-  (* section variable: the spred lang and the interp function *)
   (** * Typing *)
   Definition typing {R1 R2} P Q (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) :=
     forall p c1 c2, p ∈ P -> pre p (c1, c2) -> inv p (c1, c2) -> sbuter p Q t c1 s c2.
 
-  Lemma typing_lte {R1 R2} P P' Q Q' (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2) :
-    typing P Q t s ->
-    P' ⊨ P ->
-    (forall r1 r2, Q r1 r2 ⊨ Q' r1 r2) ->
+  Lemma typing_lte {R1 R2} P P' (Q Q' : R1 -> R2 -> Perms) t s :
+    typing P Q t s -> P' ⊒ P -> (forall r1 r2, Q r1 r2 ⊒ Q' r1 r2) ->
     typing P' Q' t s.
   Proof.
     repeat intro.
     eapply sbuter_lte; eauto.
   Qed.
 
+  Lemma typing_entails {R1 R2} P P' (Q Q' : R1 -> R2 -> Perms) t s :
+    typing P Q t s -> P' ⊨ P -> (forall r1 r2, Q r1 r2 ⊨ Q' r1 r2) ->
+    typing P' Q' t s.
+  Proof.
+    repeat intro. destruct (H0 p H2) as [q [? ?]].
+    eapply sbuter_entails_left; eauto.
+    eapply sbuter_entails_right; eauto.
+    destruct (entails_pred _ _ H6 (c1,c2)); [ split; assumption | ].
+    apply H; assumption.
+  Qed.
+
+
   Lemma typing_ret {R1 R2} P Q (r1 : R1) (r2 : R2) :
     P ⊨ (Q r1 r2) -> typing P Q (Ret r1) (Ret r2).
   Proof.
-    repeat intro. pstep. econstructor; eauto.
+    repeat intro. destruct (H p H0) as [q [? ?]]. pstep.
+    apply (sbuter_gen_sep_step _ _ _ _ _ _ _ q); try assumption;
+      try (apply entails_perm_sep_step; assumption).
+    destruct (entails_pred p q H4 (c1,c2)); [ split; assumption | ].
+    apply sbuter_gen_ret; assumption.
   Qed.
 
   Lemma rewrite_spin {E R} : (ITree.spin : itree E R) = Tau (ITree.spin).
@@ -349,6 +283,53 @@ Section bisim.
     typing P Q t s -> typing P (fun _ _ => bottom_Perms) t s.
   Proof.
     repeat intro. eapply sbuter_bottom; eauto.
+  Qed.
+
+
+  (* Reading the state on the left is bisimilar to the trivial computation on
+  the right relative to any input permission set P with output permission set
+  adding a precondition to P that the state equals the returned value *)
+  Lemma typing_read_L P :
+    typing P (fun x _ => add_pre (fun c12 => fst c12 = x) P) read (Ret tt).
+  Proof.
+    repeat intro. pstep.
+    apply (sbuter_gen_modify_L _ _ _ _ _ _ _ _ (add_pre_perm (fun c12 => fst c12 = c1) p));
+      [ eassumption | eassumption | reflexivity
+      | apply sep_step_rg; intros; assumption | ].
+    apply sbuter_gen_ret.
+    - split; [ assumption | ]. exists (c1,c2). split; [ assumption | ].
+      split; reflexivity.
+    - assumption.
+    - eexists; split; [ | reflexivity ].
+      exists p; split; [ assumption | reflexivity ].
+  Qed.
+
+  (* Apply a function to the first element of a pair *)
+  Definition map_pair_L {A B} (f : A -> A) (p : A * B) : A * B :=
+    (f (fst p), snd p).
+
+  (* Updating the state on the left is bisimilar to the trivial computation on
+  the right relative to any input permission set P containing the update in all
+  of its guarantees with output permission set rewind f P P *)
+  Lemma typing_update_L f P :
+    (forall p c12, p ∈ P -> inv p c12 -> pre p c12 -> guar p c12 (map_pair_L f c12)) ->
+    typing P (fun _ _ => rewind (map_pair_L f) P P) (update f) (Ret tt).
+  Proof.
+    repeat intro; pstep. unfold update, trigger. rewritebisim @bind_vis.
+    apply (sbuter_gen_modify_L _ _ _ _ _ _ _ _ (rewind_perm (map_pair_L f) p p));
+      [ eassumption | eassumption | apply H; assumption
+      | apply sep_step_rg; intros; assumption | ].
+    rewritebisim @bind_ret_l.
+    apply sbuter_gen_ret.
+    - exists (f c1,c2).
+      split; [ eapply inv_guar; [ apply (H p (c1,c2)) | ]; assumption | ].
+      split; [ | reflexivity ].
+      exists (c1,c2). split; [ reflexivity | ].
+      split; assumption.
+    - eapply inv_guar; [ apply (H p (c1,c2)) | ]; assumption.
+    - eexists; split; [ | reflexivity ].
+      exists p; exists p.
+      split; [ assumption | split; [ assumption | reflexivity ]].
   Qed.
 
   Lemma sbuter_bind {R1 R2 S1 S2} (p : perm) (Q : R1 -> S1 -> Perms) (R : R2 -> S2 -> Perms)
@@ -549,7 +530,7 @@ Section bisim.
     - intros; apply lte_l_sep_conj_Perms.
   Qed.
 
-
+  (* The frame rule for the typing judgment *)
   Lemma typing_frame {R1 R2} P Q R (t : itree (sceE config) R1) (s : itree (sceE specConfig) R2):
     typing P Q t s ->
     typing (P * R) (fun r1 r2 => Q r1 r2 * R) t s.
@@ -568,7 +549,7 @@ Section bisim.
         etransitivity; [ apply lte_l_sep_conj_perm | eassumption ].
   Qed.
 
-
+  (* Typing is Proper wrt permission set equality *)
   Global Instance Proper_eq_Perms_typing {R1 R2} :
     Proper (eq_Perms ==>
            (pointwise_relation _ (pointwise_relation _ eq_Perms)) ==> eq ==> eq ==> flip impl) (@typing R1 R2).
