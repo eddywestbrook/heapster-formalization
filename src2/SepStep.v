@@ -163,4 +163,108 @@ Section step.
       destruct H1 as [? [? ?]]. eapply sep_step_rely; eauto.
   Qed.
 
+
+  (* Permission entailment is sep_step plus the requirement that the
+  precondition plus invariant of the LHS implies that of the RHS *)
+  Record entails_perm (p q : perm) : Prop :=
+    { entails_inv : inv_strengthen p q;
+      entails_sep : forall r, p ⊥ r -> q ⊥ r;
+      entails_pred : forall x, inv p x /\ pre p x -> inv q x /\ pre q x }.
+
+  Notation "p ⊢ q" := (entails_perm p q) (at level 60).
+
+  (* Entailment respects permission eauality *)
+  Global Instance Proper_eq_entails_perm_impl :
+    Proper (eq_perm ==> eq_perm ==> Basics.impl) entails_perm.
+  Proof.
+    intros p1 p2 Rp q1 q2 Rq H. constructor; repeat intro.
+    - apply Rp. apply (entails_inv _ _ H). apply Rq. assumption.
+    - rewrite <- Rq. apply (entails_sep _ _ H). rewrite Rp. assumption.
+    - assert (inv p1 x /\ pre p1 x);
+        [ destruct H0; split; apply Rp; assumption | ].
+      pose proof (entails_pred _ _ H x H1) as [? ?].
+      split; apply Rq; assumption.
+  Qed.
+
+  Global Instance Proper_eq_entails_perm_flip_impl :
+    Proper (eq_perm ==> eq_perm ==> Basics.flip Basics.impl) entails_perm.
+  Proof.
+    repeat intro.
+    refine (Proper_eq_entails_perm_impl y x _ y0 x0 _ H1); symmetry; assumption.
+  Qed.
+
+  (* Entailment implies sep_step *)
+  Lemma entails_perm_sep_step p q : entails_perm p q -> sep_step p q.
+  Proof. intro H; destruct H; constructor; assumption. Qed.
+
+  (* sep_step plus preserving the invariant plus precondition gives entailment *)
+  Lemma sep_step_entails_perm p q :
+    sep_step p q -> (forall x, inv p x /\ pre p x -> inv q x /\ pre q x) ->
+    entails_perm p q.
+  Proof.
+    intros; destruct H; constructor; assumption.
+  Qed.
+
+  (* entailment is a preorder *)
+  Global Instance PreOrder_entails_perm : PreOrder entails_perm.
+  Proof.
+    constructor; repeat intro.
+    - apply sep_step_entails_perm; [ reflexivity | ].
+      intros; assumption.
+    - apply sep_step_entails_perm;
+        [ transitivity y; apply entails_perm_sep_step; assumption | ].
+      intros. eapply entails_pred; [ eassumption | ].
+      eapply entails_pred; eassumption.
+  Qed.
+
+  (* A bigger permission entails a smaller one augmented with the invariant of
+     the bigger one *)
+  Lemma bigger_perm_entails_inv p q :
+    p >= q -> entails_perm p (invperm (inv p) ** q).
+  Proof.
+    intro. apply sep_step_entails_perm.
+    - eapply sep_step_lte; [ eassumption | reflexivity ].
+    - intros x [? ?]. split; [ | split; [ apply I | apply H; assumption ] ].
+      split; [ assumption | ]. split; [ apply H; assumption | ].
+      apply separate_bigger_invperm; assumption.
+  Qed.
+
+  (* A bigger permission entails a smaller one that has the same invariant *)
+  Lemma bigger_perm_entails p q :
+    p >= q -> (forall x, inv q x -> inv p x) -> entails_perm p q.
+  Proof.
+    intros. pose proof (bigger_perm_entails_inv p q H).
+    rewrite (eq_invperm (inv q) (inv p)) in H1;
+      [ | split; [ apply H0 | apply H ] ].
+    rewrite sep_conj_perm_commut in H1.
+    rewrite sep_conj_self_invperm in H1.
+    assumption.
+  Qed.
+
+  (** Permission set entailment *)
+
+  Definition entails_Perms P Q :=
+    forall p, p ∈ P -> exists q, q ∈ Q /\ entails_perm p q.
+
+  Notation "P ⊨ Q" := (entails_Perms P Q) (at level 60).
+
+  Global Instance entails_Perms_preorder : PreOrder entails_Perms.
+  Proof.
+    constructor; repeat intro.
+    - exists p; split; [ assumption | reflexivity ].
+    - destruct (H p H1) as [q [? ?]].
+      destruct (H0 q H2) as [r [? ?]].
+      exists r; split; [ assumption | ].
+      etransitivity; eassumption.
+  Qed.
+
+  (* A bigger permission set entails a smaller one *)
+  Lemma bigger_Perms_entails P Q : P ⊒ Q -> P ⊨ Q.
+  Proof.
+    repeat intro. exists p; split; [ apply H; assumption | reflexivity ].
+  Qed.
+
 End step.
+
+Notation "P ⊨ Q" := (entails_Perms P Q) (at level 60).
+Notation "p ⊢ q" := (entails_perm p q) (at level 60).
