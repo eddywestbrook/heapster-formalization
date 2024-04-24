@@ -182,67 +182,12 @@ Section Permissions.
       inv_inc : forall x, inv q x -> inv p x;
     }.
 
+  (* The inverse of the permission ordering. It is often more useful to write it
+     this direction because it captures a notion of logical entailment, where if
+     something requires permission q then you can do it if you have permission
+     p that is at least as big as it *)
+  Definition gte_perm p q := lte_perm q p.
 
-  (*
-  (* Bigger permission has smaller pre and rely. Bigger inv and guar *)
-  Record lte_perm (p q: perm) : Prop :=
-    {
-      pre_inc : forall x, inv p x ->
-                     pre q x -> pre p x;
-      rely_inc : forall x y, inv p x ->
-                        inv p y ->
-                        rely q x y -> rely p x y;
-
-      guar_inc : forall x y, inv p x ->
-                        (* inv q y -> (* TODO: NEW *) *)
-                        guar p x y -> guar q x y;
-      inv_inc : forall x, inv p x -> inv q x;
-    }.
-
-  Record lte_perm' (p q: perm) : Prop :=
-    {
-      pre_inc' : forall x, inv p x ->
-                     pre q x -> pre p x;
-      rely_inc' : forall x y, inv p x ->
-                        inv p y ->
-                        rely q x y -> rely p x y;
-
-      guar_inc' : forall x y, inv p x ->
-                        (* inv q y -> (* TODO: NEW *) *)
-                        guar p x y -> guar q x y;
-      inv_inc' : inv p = inv q;
-    }.
-
-  (* permissions must preserve inv *)
-  Record lte_perm'' (p q: perm) : Prop :=
-    {
-      pre_inc'' : pre p = pre q;
-      rely_inc'' : rely p = rely q;
-      guar_inc'' : guar p = guar q;
-      inv_inc'' : forall x, inv p x -> inv q x;
-    }.
-   *)
-
-  (* Lemma lte_restrict p q (sp1 sp2 : config -> Prop) : *)
-  (*   (forall x, sp1 x -> sp2 x) -> *)
-  (*   lte_perm (restrict p sp1) q -> *)
-  (*   lte_perm (restrict p sp2) q. *)
-  (* Proof. *)
-  (*   intros. destruct H0. *)
-  (*   constructor; intros; cbn in *; auto. *)
-  (*   - split; [apply H |]; apply pre_inc0; auto. *)
-  (*   - destruct H0. apply H; auto. *)
-  (*   - destruct H1 as [| (? & ? & ?)]. subst; reflexivity. destruct H0. apply H; auto. *)
-  (*   - destruct H0. right. split; [| split]; auto. *)
-  (*     + apply H. *)
-  (*   - *)
-  (* Qed. *)
-
-  (* Definition lte_perm' (p q : perm) : Prop := *)
-  (*   (* (forall x, inv q x -> inv p x) /\ (* inv of q ⊆ inv p, same as spred_inc. unnecessary. implied by the next clause *) *) *)
-  (*     lte_perm (restrict p (inv q)) q. (* (p with the smaller inv of q) <= q *) *)
-
-  (* lte_perm' := spred_inc /\ lte_perm (restrict p (spred q)) q. *)
 
   (* begin hide *)
   Hint Resolve pre_inc : core.
@@ -251,6 +196,7 @@ Section Permissions.
   (* end hide *)
 
   Notation "p <= q" := (lte_perm p q).
+  Notation "p >= q" := (gte_perm p q).
 
   Global Instance lte_perm_is_PreOrder : PreOrder lte_perm.
   Proof.
@@ -261,34 +207,11 @@ Section Permissions.
     - apply H; apply H0; assumption.
   Qed.
 
-  (*
-  Global Instance lte_perm'_is_PreOrder : PreOrder lte_perm'.
+  Global Instance gte_perm_is_PreOrder : PreOrder gte_perm.
   Proof.
-    constructor; repeat intro.
-    - constructor; intros; cbn in *; eauto.
-      + right. split; auto. split; auto. eapply inv_rely; eauto.
-      + destruct H1; [subst; reflexivity |].
-        destruct H1 as (? & ? & ?). auto.
-    (* - constructor; intros; cbn in *. *)
-    - destruct H, H0. cbn in *.
-      split; cbn; intros.
-      + split; auto. apply pre_inc0; auto. apply inv_inc1; auto. apply pre_inc1; auto.
-      + rename x0 into c, y0 into c'. destruct (rely_inc0 c c'); auto.
-        apply inv_inc1; auto.
-        { destruct (rely_inc1 c c'); auto. subst. reflexivity. apply H1. }
-        destruct H1 as (? & ? & ?).
-        right. split; [| split]; auto. eapply inv_rely; eauto.
-      + rename x0 into c, y0 into c'. destruct H1; auto.
-        destruct H1 as (? & ? & ?). apply guar_inc1; auto.
-        right. split; [| split]; auto. apply guar_inc0; auto.
-        apply inv_inc1; auto.
-        apply inv_inc1; auto.
-        right. split; [| split]; auto.
-        apply inv_inc1; auto.
-        apply inv_inc1; auto.
-      + split; auto. apply inv_inc0. apply inv_inc1; auto.
+    constructor; unfold gte_perm; repeat intro;
+      [ reflexivity | etransitivity; eassumption ].
   Qed.
-   *)
 
   (** Equality of permissions = the symmetric closure of the ordering. *)
   Definition eq_perm p q : Prop := p <= q /\ q <= p.
@@ -337,6 +260,12 @@ Section Permissions.
     Proper (lte_perm ==> eq ==> Basics.flip Basics.impl) inv.
   Proof.
     repeat intro. subst. apply H; auto.
+  Qed.
+
+  Global Instance Proper_eq_perm_inv :
+    Proper (eq_perm ==> eq ==> Basics.flip Basics.impl) inv.
+  Proof.
+    repeat intro; subst. apply H; auto.
   Qed.
 
   (* Unnecessary? *)
@@ -528,6 +457,124 @@ Section Permissions.
   Next Obligation.
     constructor; repeat intro; auto.
   Qed.
+
+
+  (* Set the precondition to a permission, closed under that permission's rely *)
+  Program Definition set_pre_perm (pred : config -> Prop) p :=
+    {|
+      pre x := exists y, inv p y /\ pred y /\ rely p y x;
+      rely := rely p;
+      guar := guar p;
+      inv := inv p;
+    |}.
+  Next Obligation.
+    eexists. split; [ eassumption | ]. split; [ eassumption | ].
+    etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    eapply inv_rely; eassumption.
+  Qed.
+  Next Obligation.
+    eapply inv_guar; eassumption.
+  Qed.
+
+  (* Setting a precondition is Proper wrt the precondition and the permission *)
+  Global Instance Proper_lte_set_pre_perm :
+    Proper ((eq ==> Basics.impl) --> lte_perm ==> lte_perm) set_pre_perm.
+  Proof.
+    intros pred1 pred2 Rpred p q Rpq.
+    constructor; intros; try (apply Rpq; assumption).
+    destruct H0 as [y [? [? ?]]].
+    exists y.
+    split; [ apply Rpq; assumption | ].
+    split; [ apply (Rpred y y (reflexivity _)); assumption | ].
+    apply Rpq; assumption.
+  Qed.
+
+  Global Instance Proper_eq_set_pre_perm :
+    Proper ((eq ==> iff) ==> eq_perm ==> eq_perm) set_pre_perm.
+  Proof.
+    intros pred1 pred2 ? p q [? ?].
+    split; eapply Proper_lte_set_pre_perm; try assumption;
+      repeat intro; subst; apply (H y y (reflexivity _)); assumption.
+  Qed.
+
+  (* Add a precondition to a permission, closed under its rely *)
+  Program Definition add_pre_perm (pred : config -> Prop) p :=
+    {|
+      pre x := pre p x /\ exists y, inv p y /\ pred y /\ rely p y x;
+      rely := rely p;
+      guar := guar p;
+      inv := inv p;
+    |}.
+  Next Obligation.
+    split; [ eapply pre_respects; eassumption | ].
+    eexists. split; [ eassumption | ]. split; [ eassumption | ].
+    etransitivity; eassumption.
+  Qed.
+  Next Obligation.
+    eapply inv_rely; eassumption.
+  Qed.
+  Next Obligation.
+    eapply inv_guar; eassumption.
+  Qed.
+
+  (* Adding a precondition is Proper wrt the precondition and the permission *)
+  Global Instance Proper_lte_add_pre_perm :
+    Proper ((eq ==> Basics.impl) --> lte_perm ==> lte_perm) add_pre_perm.
+  Proof.
+    intros pred1 pred2 Rpred p q Rpq.
+    constructor; intros; try (apply Rpq; assumption).
+    destruct H0 as [? [y [? [? ?]]]]. split; [ apply Rpq; assumption | ].
+    exists y.
+    split; [ apply Rpq; assumption | ].
+    split; [ apply (Rpred y y (reflexivity _)); assumption | ].
+    apply Rpq; assumption.
+  Qed.
+
+  Global Instance Proper_eq_add_pre_perm :
+    Proper ((eq ==> iff) ==> eq_perm ==> eq_perm) add_pre_perm.
+  Proof.
+    intros pred1 pred2 ? p q [? ?].
+    split; eapply Proper_lte_add_pre_perm; try assumption;
+      repeat intro; subst; apply (H y y (reflexivity _)); assumption.
+  Qed.
+
+  (* Adding a precondition that is already implied by the precondition of a
+     permission is a no-op *)
+  Lemma add_pre_perm_eq (pred : config -> Prop) p :
+    (forall x, pre p x -> pred x) -> eq_perm (add_pre_perm pred p) p.
+  Proof.
+    constructor; constructor; intros; try assumption.
+    - split; [ assumption | ]. exists x. split; [ assumption | ].
+      split; [ apply H; assumption | reflexivity ].
+    - destruct H1; assumption.
+  Qed.
+
+
+  (* Permission stating that we currently hold q and that we held p before
+     function f was applied to the state *)
+  Definition rewind_perm f p q :=
+    set_pre_perm (fun y => exists z, y = f z /\ inv p z /\ pre p z) q.
+
+  (* rewind is Proper wrt the permission ordering *)
+  Global Instance Proper_lte_rewind_perm f :
+    Proper (lte_perm ==> lte_perm ==> lte_perm) (rewind_perm f).
+  Proof.
+    intros p1 p2 Rp q1 q2 Rq.
+    apply Proper_lte_set_pre_perm; try assumption.
+    repeat intro. destruct H0 as [z [? [? ?]]]; subst.
+    exists z; split; [ reflexivity | split ]; apply Rp; assumption.
+  Qed.
+
+  (* rewing is Proper wrt permission equality *)
+  Global Instance Proper_eq_rewind_perm f :
+    Proper (eq_perm ==> eq_perm ==> eq_perm) (rewind_perm f).
+  Proof.
+    intros p1 p2 [? ?] q1 q2 [? ?].
+    split; apply Proper_lte_rewind_perm; assumption.
+  Qed.
+
 
   (* Remove the guarantee of a permission, replacing it with equality *)
   Program Definition no_guar (p : perm) : perm :=
@@ -983,6 +1030,30 @@ Section Permissions.
     eapply guar_inc; eassumption.
   Qed.
 
+  (* Setting a precondition preserves separateness *)
+  Lemma separate_set_pre pred p q : p ⊥ q <-> set_pre_perm pred p ⊥ q.
+  Proof.
+    split; constructor; intros.
+    - apply (sep_l _ _ H); assumption.
+    - apply (sep_r _ _ H); assumption.
+    - apply (sep_l _ _ H); assumption.
+    - apply (sep_r _ _ H); assumption.
+  Qed.
+
+  (* Adding a precondition preserves separateness *)
+  Lemma separate_add_pre pred p q : p ⊥ q <-> add_pre_perm pred p ⊥ q.
+  Proof.
+    split; constructor; intros.
+    - apply (sep_l _ _ H); assumption.
+    - apply (sep_r _ _ H); assumption.
+    - apply (sep_l _ _ H); assumption.
+    - apply (sep_r _ _ H); assumption.
+  Qed.
+
+  (* Adding a rewind permission preserves separateness *)
+  Lemma separate_rewind f p q r : q ⊥ r <-> rewind_perm f p q ⊥ r.
+  Proof. apply separate_set_pre. Qed.
+
 
   (** ** Separating conjunction for permissions *)
   Program Definition sep_conj_perm (p q: perm) : perm :=
@@ -1161,6 +1232,40 @@ Section Permissions.
   Lemma invperm_dup pred : eq_perm (invperm pred) (invperm pred ** invperm pred).
   Proof.
     apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
+  Qed.
+
+  (* add_pre_perm distributes over separating conjunction. Note that this only
+     goes one way: you cannot in general recombine the conjunction of two
+     add_pre_perms into one add_pre_perm *)
+  Lemma add_pre_perm_conj pred p q :
+    add_pre_perm pred p ** add_pre_perm pred q <= add_pre_perm pred (p ** q).
+  Proof.
+    constructor; intros.
+    - destruct H as [? [? ?]].
+      destruct H0 as [[? ?] [y [[? [? ?]] [? [? ?]]]]].
+      split; split; try assumption; exists y; (split; [ | split ]; assumption).
+    - destruct H0; split; assumption.
+    - apply H0.
+    - destruct H as [? [? ?]]. split; [ assumption | ].
+      split; [ assumption | ].
+      apply separate_add_pre. symmetry; apply separate_add_pre. symmetry; assumption.
+  Qed.
+
+  (* set_pre_perm distributes over separating conjunction. Note that this only
+     goes one way: you cannot in general recombine the conjunction of two
+     set_pre_perms into one set_pre_perm *)
+  Lemma set_pre_perm_conj pred p q :
+    set_pre_perm pred p ** set_pre_perm pred q <= set_pre_perm pred (p ** q).
+  Proof.
+    constructor; intros.
+    - destruct H as [? [? ?]].
+      destruct H0 as [y [[? [? ?]] [? [? ?]]]].
+      split; exists y; (split; [ | split ]; assumption).
+    - destruct H0; split; assumption.
+    - apply H0.
+    - destruct H as [? [? ?]]. split; [ assumption | ].
+      split; [ assumption | ].
+      apply separate_set_pre. symmetry; apply separate_set_pre. symmetry; assumption.
   Qed.
 
 
@@ -1561,46 +1666,6 @@ Section Permissions.
   Qed.
 
 
-  (*
-  Lemma sep_conj_perm_assoc : forall p q r,
-      (p ** q) ** r ≡≡ p ** (q ** r).
-  Proof.
-    split; intros.
-    {
-      constructor.
-      - intros x [? [[? [? ?]] ?]].
-        pose proof (separate_sep_conj_perm_l _ _ _ H3).
-        pose proof (separate_sep_conj_perm_r _ _ _ H3).
-        split; [split; [| split] | split]; auto.
-        symmetry. apply separate_sep_conj_perm; symmetry; auto.
-      - intros x y [? [? ?]]. split; [split |]; auto.
-      - intros. induction H; try solve [etransitivity; eauto].
-        destruct H.
-        + induction H; try solve [etransitivity; eauto].
-          destruct H.
-          * constructor. left. auto.
-          * constructor. right. constructor. left. auto.
-        + constructor. right. constructor. right. auto.
-    }
-    {
-      constructor.
-      - intros x [[? [? ?]] [? ?]]. symmetry in H3.
-        pose proof (separate_sep_conj_perm_l _ _ _ H3). symmetry in H4.
-        pose proof (separate_sep_conj_perm_r _ _ _ H3). symmetry in H5.
-        split; [| split; [split; [| split] |]]; auto.
-        apply separate_sep_conj_perm; auto. symmetry; auto.
-      - intros x y [[? ?] ?]; simpl; auto.
-      - intros. induction H; try solve [etransitivity; eauto].
-        destruct H.
-        + constructor. left. constructor. left. auto.
-        + induction H; try solve [etransitivity; eauto].
-          destruct H.
-          * constructor. left. constructor. right. auto.
-          * constructor. right. auto.
-    }
-  Qed.
-   *)
-
   (** * Permission sets *)
   (** Perms = upwards-closed sets of permissions *)
   Record Perms :=
@@ -1622,12 +1687,19 @@ Section Permissions.
   (** Defined as superset. *)
   Definition lte_Perms (P Q : Perms) : Prop :=
     forall p, p ∈ Q -> p ∈ P.
+
+  Definition gte_Perms P Q := lte_Perms Q P.
+
   Notation "P ⊑ Q" := (lte_Perms P Q) (at level 60).
+  Notation "P ⊒ Q" := (gte_Perms P Q) (at level 60).
 
   Global Instance lte_Perms_is_preorder : PreOrder lte_Perms.
   Proof.
     constructor; repeat intro; auto.
   Qed.
+
+  Global Instance gte_Perms_is_preorder : PreOrder gte_Perms.
+  Proof. constructor; repeat intro; auto. Qed.
 
   (** Various lattice definitions. *)
   Program Definition top_Perms : Perms :=
@@ -1768,7 +1840,14 @@ Section Permissions.
     do 5 red. intros. etransitivity. apply H. etransitivity. apply H1. apply H0.
   Qed.
 
-  Global Instance Proper_eq_Perms_eq_perm_in_Perms : Proper (eq_Perms ==> eq_perm ==> Basics.flip Basics.impl) in_Perms.
+  Global Instance Proper_eq_Perms_gte_Perms :
+    Proper (eq_Perms ==> eq_Perms ==> Basics.flip Basics.impl) gte_Perms.
+  Proof.
+    do 6 red. intros. rewrite H. rewrite H0. auto.
+  Qed.
+
+  Global Instance Proper_eq_Perms_eq_perm_in_Perms :
+    Proper (eq_Perms ==> eq_perm ==> Basics.flip Basics.impl) in_Perms.
   Proof.
     repeat intro; subst. apply H. eapply Perms_upwards_closed; eauto.
   Qed.
@@ -1833,6 +1912,51 @@ Section Permissions.
       + exists p3. split; [ assumption | reflexivity ].
       + etransitivity; [ | eassumption ].
         apply H; assumption.
+  Qed.
+
+  (* The set of all add_pre_perm pred p permissions for p in P *)
+  Definition add_pre pred P : Perms :=
+    mkPerms (fun r => exists p, p ∈ P /\ r = add_pre_perm pred p).
+
+  (* add_pre is monotonic wrt the inverse implication ordering on predicates and
+     the ordering on permissions *)
+  Global Instance Proper_lte_add_pre :
+    Proper ((eq ==> Basics.impl) --> lte_Perms ==> lte_Perms) add_pre.
+  Proof.
+    intros pred1 pred2 Rpred P Q R_PQ r H.
+    simpl. destruct H as [? [[p [? ?]] ?]]; subst.
+    eexists; split;
+      [ exists p; split; [ apply R_PQ; assumption | reflexivity ] | ].
+    etransitivity; [ | eassumption ].
+    apply Proper_lte_add_pre_perm; [ assumption | reflexivity ].
+  Qed.
+
+  Global Instance Proper_eq_add_pre :
+    Proper ((eq ==> iff) ==> eq_Perms ==> eq_Perms) add_pre.
+  Proof.
+    intros pred1 pred2 H Q1 Q2 [? ?].
+    split; apply Proper_lte_add_pre; try assumption;
+      repeat intro; subst; apply (H _ _ (reflexivity _)); assumption.
+  Qed.
+
+  (* The set of all rewind perms whose perms are in their respective sets *)
+  Definition rewind f P Q : Perms :=
+    mkPerms (fun r => exists p q, p ∈ P /\ q ∈ Q /\ r = rewind_perm f p q).
+
+  (* rewind is monotonic wrt the permission set ordering *)
+  Global Instance Proper_lte_rewind f :
+    Proper (lte_Perms ==> lte_Perms ==> lte_Perms) (rewind f).
+  Proof.
+    repeat intro.
+    destruct H1 as [pq [[p' [q [? [? ?]]]] ?]]; subst.
+    eexists; split; [ exists p'; exists q; split; [ | split ] | ]; eauto.
+  Qed.
+
+  (* rewind is Proper wrt permission set equality *)
+  Global Instance Proper_eq_rewind f :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (rewind f).
+  Proof.
+    intros P1 P2 [? ?] Q1 Q2 [? ?]; split; apply Proper_lte_rewind; assumption.
   Qed.
 
   (* The permission set built from removing the guarantees of perms in P *)
@@ -2005,22 +2129,6 @@ Section Permissions.
   Qed.
 
 
-  (** Permission entailment, which we sometimes use instead of ordering. *)
-  Definition entails_Perms P Q := Q ⊑ P.
-  Notation "P ⊨ Q" := (entails_Perms P Q) (at level 60).
-
-  Global Instance entails_Perms_preorder : PreOrder entails_Perms.
-  Proof.
-    constructor; repeat intro; auto.
-  Qed.
-
-  Global Instance Proper_eq_Perms_entails_Perms :
-    Proper (eq_Perms ==> eq_Perms ==> Basics.flip Basics.impl) entails_Perms.
-  Proof.
-    do 6 red. intros. rewrite H. rewrite H0. auto.
-  Qed.
-
-
   (* The conjunction of singletons is the singleton of the conjunction *)
   Lemma sep_conj_singleton p q :
     p ⊥ q ->
@@ -2035,9 +2143,36 @@ Section Permissions.
       apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
+  (* A rewind can be distributed over a conjunction *)
+  Lemma rewind_conj f P Q1 Q2 :
+    rewind f P (Q1 * Q2) ⊒ rewind f P Q1 * rewind f P Q2.
+  Proof.
+    intros rew_pq [rew_pq' [[p [q [? [[q1 [q2 [? [? [? ?]]]]] ?]]]] ?]]; subst.
+    exists (rewind_perm f p q1); exists (rewind_perm f p q2).
+    split; [ | split; [ | split ]].
+    - eexists; split; [ | reflexivity ]. exists p; exists q1.
+      split; [ assumption | ]. split; [ assumption | ]. reflexivity.
+    - eexists; split; [ | reflexivity ]. exists p; exists q2.
+      split; [ assumption | ]. split; [ assumption | ]. reflexivity.
+    - etransitivity; [ | eassumption ].
+      etransitivity; [ apply set_pre_perm_conj | ].
+      apply Proper_lte_rewind_perm; [ reflexivity | eassumption ].
+    - apply separate_set_pre. symmetry; apply separate_set_pre. symmetry; assumption.
+  Qed.
+
+  (* If we have a rewind with the same conjunction on the left and right, we can
+     turn it into two rewinds of each element of the conjunction *)
+  Lemma rewind_same_conj f P Q :
+    rewind f (P * Q) (P * Q) ⊒ rewind f P P * rewind f Q Q.
+  Proof.
+    etransitivity; [ apply rewind_conj | ].
+    apply sep_conj_Perms_monotone; apply Proper_lte_rewind; try reflexivity;
+      [ apply lte_l_sep_conj_Perms | apply lte_r_sep_conj_Perms ].
+  Qed.
+
 
   (** Separating implication, though we won't be using it. *)
-  Definition impl_Perms P Q := meet_Perms (fun R => R * P ⊨ Q).
+  Definition impl_Perms P Q := meet_Perms (fun R => R * P ⊒ Q).
 
   (* impl_Perms is covariant in its second argument and contravariant in its
      first argument *)
@@ -2061,7 +2196,7 @@ Section Permissions.
   Qed.
 
   (** A standard property about separating conjunction and implication. *)
-  Lemma adjunction : forall P Q R, P * Q ⊨ R <-> P ⊨ (impl_Perms Q R).
+  Lemma adjunction : forall P Q R, P * Q ⊒ R <-> P ⊒ (impl_Perms Q R).
   Proof.
     intros. split; intros.
     - red. red. intros. simpl. exists P. auto.
@@ -2086,7 +2221,7 @@ Section Permissions.
 
   (* An impl_Perms permission can be partially applied *)
   Lemma impl_Perms_partial_apply P1 P2 Q :
-    P1 * impl_Perms (P1 * P2) Q ⊨ impl_Perms P2 Q.
+    P1 * impl_Perms (P1 * P2) Q ⊒ impl_Perms P2 Q.
   Proof.
     rewrite sep_conj_Perms_commut. unfold impl_Perms.
     rewrite sep_conj_Perms_meet_commute.
@@ -2096,7 +2231,7 @@ Section Permissions.
     rewrite <- sep_conj_Perms_assoc. assumption.
   Qed.
 
-  Lemma impl_Perms_apply P Q : P * impl_Perms P Q ⊨ Q.
+  Lemma impl_Perms_apply P Q : P * impl_Perms P Q ⊒ Q.
   Proof.
     transitivity (impl_Perms bottom_Perms Q);
       [ | rewrite bottom_impl_Perms_eq; reflexivity ].
@@ -2175,14 +2310,15 @@ End Permissions.
 (* begin hide *)
 (* Redefining notations outside the section. *)
 Notation "p <= q" := (lte_perm p q).
+Notation "p >= q" := (gte_perm p q).
 Notation "p ≡≡ q" := (eq_perm p q) (at level 50).
 Notation "p ⊥ q" := (separate p q) (at level 50).
 Notation "p ** q" := (sep_conj_perm p q) (at level 40).
 Notation "p ∈ P" := (in_Perms P p) (at level 60).
 Notation "P ⊑ Q" := (lte_Perms P Q) (at level 60).
+Notation "P ⊒ Q" := (gte_Perms P Q) (at level 60).
 Notation "P ≡ Q" := (eq_Perms P Q) (at level 60).
 Notation "P * Q" := (sep_conj_Perms P Q).
-Notation "P ⊨ Q" := (entails_Perms P Q) (at level 60).
 Notation "P -⊑- Q" := (forall a, P a ⊑ Q a) (at level 60).
 Notation "P -≡- Q" := (P -⊑- Q /\ Q -⊑- P) (at level 60).
 
