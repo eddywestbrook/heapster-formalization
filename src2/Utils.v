@@ -442,3 +442,12 @@ Variant modifyE C : Type -> Type :=
 Global Arguments Modify {C} f.
 
 Definition sceE (C : Type) := (exceptE unit +' modifyE C +' nondetE).
+
+(* The computation that reads the current state *)
+Definition read {E S} `{modifyE S -< E} : itree E S :=
+  trigger (Modify id).
+
+(* The computation that updates the current state by applying a function and
+then returns unit *)
+Definition update {E S} `{modifyE S -< E} (f : S -> S) : itree E unit :=
+  _ <- trigger (Modify f);; Ret tt.
