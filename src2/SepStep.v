@@ -163,6 +163,17 @@ Section step.
       destruct H1 as [? [? ?]]. eapply sep_step_rely; eauto.
   Qed.
 
+  (* Setting a precondition on p sep_steps to p *)
+  Lemma set_pre_sep_step pred p : sep_step (set_pre_perm pred p) p.
+  Proof.
+    apply sep_step_rg; intros; assumption.
+  Qed.
+
+  (* Adding a precondition on p sep_steps to p *)
+  Lemma add_pre_sep_step pred p : sep_step (add_pre_perm pred p) p.
+  Proof.
+    apply sep_step_rg; intros; assumption.
+  Qed.
 
   (* Permission entailment is sep_step plus the requirement that the
   precondition plus invariant of the LHS implies that of the RHS *)

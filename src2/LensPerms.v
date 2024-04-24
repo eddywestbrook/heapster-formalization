@@ -239,9 +239,8 @@ Section PLensPerms.
       symmetry; apply self_c; assumption.
   Qed.
 
-  (* A multi-write permission can be split into a write and a smaller
-  multi-write assuming the set of the smaller multi-write is self-contained *)
-  Lemma ixplens_multi_write_split_write ix pre ixs :
+  (* Helper lemma for ixplens_multi_write_split_write *)
+  Lemma ixplens_multi_write_split_write_step ixs ix pre :
     self_contained_ixs ixs ->
     sep_step (ixplens_multi_write_perm (eq ix \1/ ixs))
       (ixplens_write_perm_pre ix pre ** ixplens_multi_write_perm ixs).
@@ -264,6 +263,26 @@ Section PLensPerms.
       + repeat intro. apply H1. right; assumption.
   Qed.
 
+  (* A multi-write permission can be split into a write and a smaller
+  multi-write by setting the value of the write permission, assuming the set of
+  the smaller multi-write is self-contained *)
+  Lemma ixplens_multi_write_split_write ixs ix elem :
+    ~ ixs ix -> self_contained_ixs ixs ->
+    rewind_perm (fun x => iput ix x elem)
+      (ixplens_multi_write_perm (eq ix \1/ ixs))
+      (ixplens_multi_write_perm (eq ix \1/ ixs))
+      ⊢ ixplens_write_perm_eq ix elem ** ixplens_multi_write_perm ixs.
+  Proof.
+    intros; apply sep_step_entails_perm.
+    - etransitivity; [ apply set_pre_sep_step
+                     | apply ixplens_multi_write_split_write_step; assumption ].
+    - intros.
+      destruct H1 as [_ [y [_ [[z [? _]] ?]]]]; subst.
+      split; [ split; [ | split ] | split ]; try apply I.
+      + apply ixplens_write_multi_write_sep; assumption.
+      + exists elem. split; [ | reflexivity ].
+        rewrite <- (H2 ix); [ apply iGetPut_eq | left; reflexivity ].
+  Qed.
 
   (* Multi-write permissions are separate from each other when their index sets
   are self-contained and disjoint *)
@@ -286,8 +305,8 @@ Section PLensPerms.
   Qed.
 
   (* A multi-write permission can be split into two disjoint self-contained
-  multi-write permissions *)
-  Lemma ixplens_multi_write_split (ixs1 ixs2 : Ix -> Prop) :
+  multi-write permissions; helper lemma *)
+  Lemma ixplens_multi_write_split_sep (ixs1 ixs2 : Ix -> Prop) :
     (forall ix, ixs1 ix -> ~ ixs2 ix) ->
     self_contained_ixs ixs1 -> self_contained_ixs ixs2 ->
     sep_step (ixplens_multi_write_perm (ixs1 \1/ ixs2))
@@ -312,5 +331,19 @@ Section PLensPerms.
     - split; repeat intro; apply H0; [ left | right ]; assumption.
   Qed.
 
+  (* A multi-write permission can be split into two disjoint self-contained
+  multi-write permissions *)
+  Lemma ixplens_multi_write_split (ixs1 ixs2 : Ix -> Prop) :
+    (forall ix, ixs1 ix -> ~ ixs2 ix) ->
+    self_contained_ixs ixs1 -> self_contained_ixs ixs2 ->
+    ixplens_multi_write_perm (ixs1 \1/ ixs2)
+      ⊢ ixplens_multi_write_perm ixs1 ** ixplens_multi_write_perm ixs2.
+  Proof.
+    intros; apply sep_step_entails_perm.
+    - apply ixplens_multi_write_split_sep; assumption.
+    - intros. split; [ | simpl; trivial ].
+      split; [ | split ]; try apply I.
+      apply ixplens_multi_write_multi_write_sep; assumption.
+  Qed.
 
 End PLensPerms.
