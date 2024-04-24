@@ -552,8 +552,8 @@ Section Permissions.
   Qed.
 
 
-  (* Permission stating that we currently hold q and that we held p before
-     function f was applied to the state *)
+  (* Permission stating that we currently hold q except for its precondition,
+     and that we held p before function f was applied to the state *)
   Definition rewind_perm f p q :=
     set_pre_perm (fun y => exists z, y = f z /\ inv p z /\ pre p z) q.
 
