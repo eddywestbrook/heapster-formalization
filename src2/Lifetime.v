@@ -278,6 +278,10 @@ Definition subsumes n1 n2 x1 x2 :=
   Definition all_lte l (ls : nat -> Prop) st : Prop :=
     forall l', ls l' -> statusOf_lte (lifetime st l) (lifetime st l').
 
+  (* l is lte all lifetimes in the emptty set *)
+  Lemma all_lte_empty l st : all_lte l (fun _ : nat => False) st.
+  Proof. repeat intro; elimtype False; assumption. Qed.
+
   (* All lifetimes in a set are finished *)
   Definition all_finished (ls : nat -> Prop) st : Prop :=
     forall l, ls l -> lifetime st l = Some finished.
