@@ -361,6 +361,26 @@ Section step.
   Qed.
 
 
+  (* Meet is a lower bound wrt entailment for all its elements *)
+  Lemma ent_meet_Perms : forall (Ps : Perms -> Prop) P,
+      (exists Q, Ps Q /\ P ⊨ Q) ->
+      P ⊨ meet_Perms Ps.
+  Proof.
+    repeat intro. destruct H as [Q [? ?]].
+    destruct (H1 p H0) as [q [? ?]].
+    exists q; split; [ | assumption ].
+    exists Q. split; assumption.
+  Qed.
+
+  (* A meet is the greatest lower bound wrt entailment for all its elements *)
+  Lemma meet_Perms_max_ent : forall (Ps : Perms -> Prop) Q,
+      (forall P, Ps P -> P ⊨ Q) ->
+      meet_Perms Ps ⊨ Q.
+  Proof.
+    repeat intro. destruct H0 as [P [? ?]].
+    apply (H P H0 p H1).
+  Qed.
+
 End step.
 
 Notation "P ⊨ Q" := (entails_Perms P Q) (at level 60).
