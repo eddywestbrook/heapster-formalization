@@ -2143,6 +2143,20 @@ Section Permissions.
       apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
+  (* The rewind of two singletons is a singleton of their rewind *)
+  Lemma rewind_singleton f p q :
+    rewind f (singleton_Perms p) (singleton_Perms q)
+      ≡ singleton_Perms (rewind_perm f p q).
+  Proof.
+    split; repeat intro.
+    - simpl in H. eexists; split; [ | apply H ].
+      exists p; exists q. simpl.
+      split; [ reflexivity | ]. split; reflexivity.
+    - simpl in H. destruct H as [? [[p' [q' [? [? ?]]]] ?]]; subst.
+      simpl. etransitivity; [ | eassumption ].
+      apply Proper_lte_rewind_perm; assumption.
+  Qed.
+
   (* A rewind can be distributed over a conjunction *)
   Lemma rewind_conj f P Q1 Q2 :
     rewind f P (Q1 * Q2) ⊒ rewind f P Q1 * rewind f P Q2.

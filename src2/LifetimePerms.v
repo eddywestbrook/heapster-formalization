@@ -175,7 +175,7 @@ Section LifetimePerms.
     - eapply lowned_lowned_separate_h; eassumption.
   Qed.
 
-
+  (* Helper lemma for the lifetime subsumption rule *)
   Lemma lowned_subsume_step l1 ls1 l2 ls2 :
     l1 <> l2 ->
     sep_step (lowned_perm l1 ls1 ** lowned_perm l2 ls2)
@@ -620,8 +620,9 @@ Section LifetimePerms.
   Qed.
 
 
-  (* The rule for recovering p from after_perm l p *)
-  Lemma rewind_when_after_entails_p l p :
+  (* An after_perm for p can be turned back into p if its lifetime is finished
+  and we held a when_perm for p before the lifetime was ended *)
+  Lemma lfinished_after_recover_perm l p :
     p ⊥ lowned_perm l (fun _ => False) ->
     lfinished_perm l **
     rewind_lt_perm l
@@ -714,16 +715,17 @@ Section LifetimeRules.
     meet_Perms (fun R => rewind_lt l (P * R) (P * R) ⊨ Q).
 
   (* lowned is the conjunction of an lowned permission plus a permission R such
-     that ending the lifetime while holding P plus R yields Q *)
+  that ending the lifetime while holding P plus R yields Q *)
   Definition lowned l ls P Q :=
     lowned_Perms l ls * rewind_lt_impl l (lowned_Perms l (fun _ => False) * P) Q.
 
 
-
+  (* A singleton permission set that is separate from lowned can be split into
+  when and after *)
   Lemma Perms_split_lt p l ls :
     p ⊥ lowned_perm l ls ->
     singleton_Perms p * lowned_Perms l ls
-      ⊒ (when l (singleton_Perms p) * after l (singleton_Perms p)) * lowned_Perms l ls.
+      ⊨ (when l (singleton_Perms p) * after l (singleton_Perms p)) * lowned_Perms l ls.
   Proof.
     intros. unfold lowned_Perms, when, after.
     rewrite sep_conj_singleton; [ | assumption ].
@@ -731,11 +733,12 @@ Section LifetimeRules.
     rewrite map_singleton_Perms; [ | typeclasses eauto ].
     rewrite sep_conj_singleton; [ | apply separate_when_after ].
     rewrite sep_conj_singleton; [ | apply separate_when_after_lowned; assumption ].
+    apply bigger_Perms_entails.
     apply lte_singleton_Perms.
     apply perm_split_lt.
   Qed.
 
-
+  (* lfinished is always separate from after *)
   Lemma lfinished_after_sep l p : lfinished_perm l ⊥ after_perm l p.
   Proof.
     symmetry; apply separate_invperm; intros.
@@ -743,51 +746,56 @@ Section LifetimeRules.
   Qed.
 
 
-  (*
-  Lemma lfinished_after l p :
+  (* An after_perm for p can be turned back into p if its lifetime is finished
+  and we held a when_perm for p before the lifetime was ended *)
+  Lemma lfinished_after_recover_singleton l p :
     p ⊥ lowned_perm l (fun _ => False) ->
-    lfinished l * (rewind l (when l (singleton_Perms p)) * after l (singleton_Perms p))
-    ⊒ singleton_Perms p.
+    lfinished l * (rewind_lt l
+                     (lowned_Perms l (fun _ => False) * when l (singleton_Perms p))
+                     (after l (singleton_Perms p)))
+    ⊨ singleton_Perms p.
   Proof.
-    intros. unfold lfinished, rewind, when, after.
+    intros; unfold lfinished, rewind_lt, when, after, lowned_Perms.
     rewrite (map_singleton_Perms (after_perm l)); [ | typeclasses eauto ].
     rewrite (map_singleton_Perms (when_perm l)); [ | typeclasses eauto ].
-    rewrite mapPerms_as_meet.
-    rewrite sep_conj_Perms_meet_commute.
-    rewrite (sep_conj_Perms_commut (singleton_Perms (lfinished_perm l))).
-    rewrite sep_conj_Perms_meet_commute.
-    apply meet_Perms_max.
-    intros PQR [PQ [? [P [? [when_p [? ?]]]]]]; subst.
-    rewrite sep_conj_singleton; [ | apply rewind_when_sep_after; assumption ].
-    rewrite sep_conj_singleton.
-    - apply lte_singleton_Perms.
-      rewrite (sep_conj_perm_commut _ (lfinished_perm l)).
-      etransitivity; [ apply lte_r_sep_conj_perm
-                     | apply lfinished_after_perm; assumption ].
-    - symmetry; apply sep_conj_perm_separate;
-        [ apply lfinished_rewind_sep | apply lfinished_after_sep ].
+    rewrite sep_conj_singleton;
+      [ | symmetry; apply separate_when_lowned; assumption ].
+    rewrite rewind_singleton.
+    rewrite sep_conj_singleton;
+      [ | symmetry; apply separate_rewind; symmetry; apply lfinished_after_sep ].
+    transitivity (lfinished l * singleton_Perms p);
+      [ | apply entails_r_sep_conj ].
+    unfold lfinished.
+    rewrite sep_conj_singleton;
+      [ | symmetry; apply sep_lowned_sep_lfinished; assumption ].
+    apply entails_singleton_Perms.
+    apply lfinished_after_recover_perm; assumption.
   Qed.
+
 
 
   (* The rule for splitting the lifetime of a singleton permission *)
   Lemma lowned_split_lt l ls p Q R :
     p ⊥ lowned_perm l ls -> p ⊥ lowned_perm l (fun _ => False) ->
     singleton_Perms p * lowned l ls Q R
-      ⊒ when l (singleton_Perms p)
+      ⊨ when l (singleton_Perms p)
         * lowned l ls (when l (singleton_Perms p) * Q) (singleton_Perms p * R).
   Proof.
     intros. unfold lowned.
     rewrite sep_conj_Perms_assoc.
     etransitivity;
-      [ apply sep_conj_Perms_monotone;
+      [ apply monotone_entails_sep_conj;
         [ apply Perms_split_lt; assumption | reflexivity ] | ].
     rewrite <- sep_conj_Perms_assoc.
     rewrite <- sep_conj_Perms_assoc.
-    apply sep_conj_Perms_monotone; [ reflexivity | ].
+    apply monotone_entails_sep_conj; [ reflexivity | ].
     rewrite (sep_conj_Perms_assoc (after l (singleton_Perms p))).
     rewrite (sep_conj_Perms_commut (after l (singleton_Perms p))).
     rewrite <- (sep_conj_Perms_assoc _ (after l (singleton_Perms p))).
-    apply sep_conj_Perms_monotone; [ reflexivity | ].
+    apply monotone_entails_sep_conj; [ reflexivity | ].
+  Admitted.
+
+    (*
     refine (proj1 (adjunction _ _ _) _).
     (* FIXME: set up the right Proper instances to make this use rewriting *)
     etransitivity;

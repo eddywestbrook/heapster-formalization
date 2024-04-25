@@ -8,6 +8,14 @@ From Coq Require Import
      Classes.RelationClasses.
 (* end hide *)
 
+(* Repeatedly split all the conjunctions in the current goal *)
+Ltac split_conjs :=
+  lazymatch goal with
+  | |- (?x /\ ?y) => split; split_conjs
+  | _ => idtac
+  end.
+
+
 Section step.
   Context {config : Type}.
 
@@ -252,6 +260,24 @@ Section step.
     assumption.
   Qed.
 
+  (* Conjunction is monotonic wrt entailment on separate permissions *)
+  Lemma monotone_entails_sep_conj_perm p p' q q' :
+    p ⊥ q -> p ⊢ p' -> q ⊢ q' -> p ** q ⊢ p' ** q'.
+  Proof.
+    repeat intro. apply sep_step_entails_perm.
+    - etransitivity; [ apply sep_step_sep_conj_l | apply sep_step_sep_conj_r ];
+        try assumption; try (apply entails_perm_sep_step; assumption).
+      symmetry; eapply entails_sep; eassumption.
+    - intros x [[? [? ?]] [? ?]].
+      destruct (entails_pred p p' H0 x (conj H2 H5)).
+      destruct (entails_pred q q' H1 x (conj H3 H6)).
+      simpl. split_conjs; try assumption.
+      eapply entails_perm_sep_step; try eassumption.
+      symmetry; eapply entails_perm_sep_step; try eassumption.
+      symmetry; assumption.
+  Qed.
+
+
   (** Permission set entailment *)
 
   Definition entails_Perms P Q :=
@@ -269,11 +295,71 @@ Section step.
       etransitivity; eassumption.
   Qed.
 
+  Global Instance Proper_lte_Perms_entails_Perms :
+    Proper (lte_Perms --> lte_Perms ==> Basics.flip Basics.impl) entails_Perms.
+  Proof.
+    repeat intro.
+    apply H in H2. destruct (H1 p H2) as [q [? ?]]. apply H0 in H3.
+    exists q; split; assumption.
+  Qed.
+
+  Global Instance Proper_eq_Perms_entails_Perms :
+    Proper (eq_Perms ==> eq_Perms ==> Basics.flip Basics.impl) entails_Perms.
+  Proof.
+    repeat intro. destruct H; destruct H0.
+    apply (Proper_lte_Perms_entails_Perms _ _ H3 _ _ H0 H1). assumption.
+  Qed.
+
   (* A bigger permission set entails a smaller one *)
   Lemma bigger_Perms_entails P Q : P ⊒ Q -> P ⊨ Q.
   Proof.
     repeat intro. exists p; split; [ apply H; assumption | reflexivity ].
   Qed.
+
+  (* Entailment on permissions yields entailment on their singleton sets *)
+  Lemma entails_singleton_Perms p q :
+    p ⊢ q -> singleton_Perms p ⊨ singleton_Perms q.
+  Proof.
+    repeat intro. exists (invperm (inv p0) ** q). simpl in H0.
+    split; [ apply lte_r_sep_conj_perm | ].
+    etransitivity; [ apply bigger_perm_entails_inv; eassumption | ].
+    apply monotone_entails_sep_conj_perm; [ | reflexivity | assumption ].
+    apply separate_bigger_invperm; assumption.
+  Qed.
+
+  (* A permission set conjunction entails its left-hand side *)
+  Lemma entails_l_sep_conj P Q : P * Q ⊨ P.
+  Proof.
+    intros p H. exists p; split; [ | reflexivity ].
+    apply (lte_l_sep_conj_Perms _ Q p). assumption.
+  Qed.
+
+  (* A permission set conjunction entails its right-hand side *)
+  Lemma entails_r_sep_conj P Q : P * Q ⊨ Q.
+  Proof.
+    intros p H. exists p; split; [ | reflexivity ].
+    apply (lte_r_sep_conj_Perms P Q p). assumption.
+  Qed.
+
+  (* Permission set conjunction is monotonic wrt entailment *)
+  Lemma monotone_entails_sep_conj P P' Q Q' :
+    P ⊨ P' -> Q ⊨ Q' -> P * Q ⊨ P' * Q'.
+  Proof.
+    intros entP entQ pq H. destruct H as [p [q [? [? [? ?]]]]].
+    destruct (entP p H) as [p' [? ?]].
+    destruct (entQ q H0) as [q' [? ?]].
+    exists (invperm (inv pq) ** (p' ** q')); split.
+    - exists p'; exists q'.
+      split_conjs; try assumption; try apply lte_r_sep_conj_perm.
+      eapply entails_sep; try eassumption.
+      symmetry; eapply entails_sep; try eassumption.
+      symmetry; assumption.
+    - etransitivity; [ apply bigger_perm_entails_inv; apply H1 | ].
+      apply monotone_entails_sep_conj_perm;
+       [ apply separate_bigger_invperm; assumption | reflexivity | ].
+      apply monotone_entails_sep_conj_perm; assumption.
+  Qed.
+
 
 End step.
 
