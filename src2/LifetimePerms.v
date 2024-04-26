@@ -24,6 +24,19 @@ From Paco Require Import
 Import ListNotations.
 (* end hide *)
 
+(* FIXME: put this somewhere better *)
+Ltac destruct_ex_conjs H :=
+  lazymatch type of H with
+  | ex _ =>
+      let p := fresh "p" in
+      let Hnew := fresh "H" in
+      destruct H as [p Hnew]; destruct_ex_conjs Hnew
+  | _ /\ _ =>
+      let H1 := fresh "H" in
+      let H2 := fresh "H" in
+      destruct H as [H1 H2]; destruct_ex_conjs H1; destruct_ex_conjs H2
+  | _ => idtac
+  end.
 
 Section LifetimePerms.
   Context {S : Type}.
@@ -712,12 +725,24 @@ Section LifetimeRules.
   (* The set of all permissions such that, if you held them and P before ending
   lifetime l, you could recover Q afterwards *)
   Definition rewind_lt_impl l P Q :=
-    meet_Perms (fun R => rewind_lt l (P * R) (P * R) ⊨ Q).
+    meet_Perms (fun R =>
+                  lfinished l *
+                    rewind_lt l (lowned_Perms l (fun _ => False) * P * R) (P * R) ⊨ Q).
+
+  Lemma rewind_lt_impl_adj_lr l P Q R :
+    lfinished l *
+      rewind_lt l (lowned_Perms l (fun _ => False) * Q * P) (Q * P) ⊨ R ->
+    P ⊨ rewind_lt_impl l Q R.
+  Proof.
+    repeat intro.
+    exists p. split; [ | reflexivity ]. exists P. split; assumption.
+  Qed.
+
 
   (* lowned is the conjunction of an lowned permission plus a permission R such
   that ending the lifetime while holding P plus R yields Q *)
   Definition lowned l ls P Q :=
-    lowned_Perms l ls * rewind_lt_impl l (lowned_Perms l (fun _ => False) * P) Q.
+    lowned_Perms l ls * rewind_lt_impl l P Q.
 
 
   (* A singleton permission set that is separate from lowned can be split into
@@ -773,9 +798,12 @@ Section LifetimeRules.
   Qed.
 
 
+  Global Instance Proper_ent_rewind (f : S -> S) :
+    Proper (entails_Perms ==> entails_Perms ==> entails_Perms) (rewind f).
+  Admitted.
 
   (* The rule for splitting the lifetime of a singleton permission *)
-  Lemma lowned_split_lt l ls p Q R :
+  Lemma lowned_split l ls p Q R :
     p ⊥ lowned_perm l ls -> p ⊥ lowned_perm l (fun _ => False) ->
     singleton_Perms p * lowned l ls Q R
       ⊨ when l (singleton_Perms p)
@@ -793,30 +821,34 @@ Section LifetimeRules.
     rewrite (sep_conj_Perms_commut (after l (singleton_Perms p))).
     rewrite <- (sep_conj_Perms_assoc _ (after l (singleton_Perms p))).
     apply monotone_entails_sep_conj; [ reflexivity | ].
-  Admitted.
-
-    (*
-    refine (proj1 (adjunction _ _ _) _).
+    unfold rewind_lt_impl.
+    rewrite (sep_conj_Perms_commut (after l _)); rewrite sep_conj_Perms_meet_commute.
+    apply meet_Perms_max_ent. intros P' [P [? ?]]; subst.
+    apply ent_meet_Perms.
+    exists (P * after l (singleton_Perms p)).
+    split; [ | reflexivity ].
+    rewrite (sep_conj_Perms_commut P (after l _)).
+    rewrite <- (sep_conj_Perms_assoc (lowned_Perms l _)).
+    rewrite sep_conj_Perms_distrib.
     (* FIXME: set up the right Proper instances to make this use rewriting *)
     etransitivity;
-      [ eapply sep_conj_Perms_monotone; [ reflexivity | ];
-        eapply sep_conj_Perms_monotone; [ reflexivity | ];
-        apply rewind_conj
-      | ].
-    rewrite (sep_conj_Perms_commut (rewind l _) (rewind l Q)).
-    rewrite lfinished_dup at 2.
-    rewrite (sep_conj_Perms_distrib (lfinished l) (lfinished l)).
-    rewrite <- (sep_conj_Perms_assoc (after l (singleton_Perms p))).
-    rewrite (sep_conj_Perms_assoc (impl_Perms _ _)).
-    rewrite (sep_conj_Perms_commut _ (lfinished l * rewind l (when l _))).
-    rewrite (sep_conj_Perms_assoc (after l _)).
-    rewrite (sep_conj_Perms_commut (impl_Perms _ _)).
-    apply sep_conj_Perms_monotone; [ | apply impl_Perms_apply ].
-    rewrite (sep_conj_Perms_commut (after _ _)).
-    rewrite <- (sep_conj_Perms_assoc).
-    apply lfinished_after; assumption.
+      [ eapply monotone_entails_sep_conj; [ reflexivity | ];
+        apply bigger_Perms_entails; apply rewind_conj | ].
+    rewrite lfinished_dup.
+    rewrite (sep_conj_Perms_distrib (lfinished l)).
+    apply monotone_entails_sep_conj.
+    - etransitivity; [ | apply lfinished_after_recover_singleton; eassumption ].
+      apply monotone_entails_sep_conj; [ reflexivity | ].
+      apply Proper_ent_rewind; [ | apply entails_r_sep_conj ].
+      apply monotone_entails_sep_conj; [ reflexivity | ].
+      etransitivity; [ apply entails_l_sep_conj | ]. apply entails_l_sep_conj.
+    - etransitivity; [ | apply H2 ].
+      apply monotone_entails_sep_conj; [ reflexivity | ].
+      apply Proper_ent_rewind; [ | reflexivity ].
+      rewrite <- (sep_conj_Perms_assoc (lowned_Perms l _) Q P).
+      apply monotone_entails_sep_conj; [ reflexivity | ].
+      apply entails_r_sep_conj.
   Qed.
-  *)
 
 (* End LifetimeRules. *)
 End LifetimePerms.
