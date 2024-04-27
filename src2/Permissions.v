@@ -7,6 +7,8 @@ From Coq Require Import
   Relations.Operators_Properties.
 (* end hide *)
 
+From Heapster2 Require Import
+     Utils.
 
 (*** Helper lemmas for clos_trans ***)
 
@@ -393,9 +395,6 @@ Section Permissions.
       guar := fun x y => x = y;
       inv := fun x => True;
     |}.
-  Next Obligation.
-    constructor; repeat intro; subst; auto.
-  Qed.
 
   Lemma bottom_perm_is_bottom : forall p, bottom_perm <= p.
   Proof.
@@ -409,9 +408,6 @@ Section Permissions.
       guar := fun x y => True;
       inv := fun x => False;
     |}.
-  Next Obligation.
-    constructor; repeat intro; subst; auto.
-  Qed.
 
   Lemma top_perm_is_top : forall p, p <= top_perm.
   Proof.
@@ -428,9 +424,6 @@ Section Permissions.
       guar := fun x y => x = y;
       inv := phi;
     |}.
-  Next Obligation.
-    constructor; repeat intro; subst; auto.
-  Qed.
 
   (* A stronger predicate gives a stronger invperm *)
   Lemma lte_invperm (pred1 pred2 : config -> Prop) :
@@ -454,9 +447,6 @@ Section Permissions.
       guar x y := x = y;
       inv x := True
     |}.
-  Next Obligation.
-    constructor; repeat intro; auto.
-  Qed.
 
 
   (* Set the precondition to a permission, closed under that permission's rely *)
@@ -1064,19 +1054,8 @@ Section Permissions.
       inv := fun x => inv p x /\ inv q x /\ p ⊥ q;
     |}.
   Next Obligation.
-    constructor; repeat intro.
-    - split; reflexivity.
-    - destruct H, H0.
-      split; etransitivity; eauto.
-  Qed.
-  Next Obligation.
-    constructor.
-    - constructor; intuition.
-    - repeat intro. destruct H, H0.
-      + destruct H, H0; econstructor 2; constructor; eauto.
-      + econstructor 2. left. apply H. econstructor 2; eauto.
-      + econstructor 2; eauto. econstructor 2; eauto. left. assumption.
-      + repeat (econstructor 2; eauto).
+    apply PreOrder_clos_trans.
+    repeat intro. left; reflexivity.
   Qed.
   Next Obligation.
     split; respects.
@@ -1859,7 +1838,15 @@ Section Permissions.
 
   Global Instance Proper_eq_Perms_mapPerms f :
     Proper (eq_Perms ==> eq_Perms) (mapPerms f).
-  Admitted.
+  Proof.
+    intros p q [? ?]. split; repeat intro.
+    - simpl in H1. destruct_ex_conjs H1; subst.
+      exists (f x0). split; [ | assumption ].
+      exists x0; split; [ apply H; assumption | reflexivity ].
+    - simpl in H1; destruct_ex_conjs H1; subst.
+      exists (f x0). split; [ | assumption ].
+      exists x0; split; [ apply H0; assumption | reflexivity ].
+  Qed.
 
   (* We could equivalently have defined mapPerms as a meet *)
   Lemma mapPerms_as_meet f P :
