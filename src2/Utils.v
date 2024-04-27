@@ -90,12 +90,12 @@ Proof.
   intro. apply rt_refl.
 Qed.
 
-Global Instance Transitive_clos_trans {A} R : Transitive (clos_refl_trans A R).
+Global Instance Transitive_clos_refl_trans {A} R : Transitive (clos_refl_trans A R).
 Proof.
   repeat intro. eapply rt_trans; eassumption.
 Qed.
 
-Global Instance PreOrder_clos_trans {A} R : PreOrder (clos_refl_trans A R).
+Global Instance PreOrder_clos_refl_trans {A} R : PreOrder (clos_refl_trans A R).
 Proof.
   constructor; typeclasses eauto.
 Qed.
