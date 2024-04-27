@@ -485,25 +485,6 @@ Section LifetimePerms.
   Qed.
 
 
-  (* FIXME: no longer needed?
-  (* Needed to prove the following associativity lemma *)
-  Lemma sep_after_lowned_sep_after l ls pred p q :
-    after_perm l p ⊥ after_perm l q ** lowned_perm l ls pred ->
-    after_perm l p ⊥ after_perm l q.
-  Admitted.
-
-  (* I think this will be useful for the lowned rules *)
-  Lemma after_after_lowned_assoc l ls pred p q :
-    after_perm l p ⊥ after_perm l q ** lowned_perm l ls pred ->
-    (lowned_perm l ls pred ** (after_perm l p ** after_perm l q))
-    <= ((lowned_perm l ls pred ** after_perm l p) ** after_perm l q).
-  Proof.
-    intro. apply sep_conj_perm_assoc'. eapply sep_after_lowned_sep_after.
-    eassumption.
-  Qed.
-  *)
-
-
   (* l1 is current whenever l2 is current, i.e., Some current <= l1 <= l2. This
   means that l1 is an ancestor of l2, i.e., a larger lifetime containing l2. *)
   Program Definition lcurrent_perm l1 l2 :=
