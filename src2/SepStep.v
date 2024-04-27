@@ -1,19 +1,12 @@
 (* begin hide *)
 From Heapster2 Require Import
-     Permissions.
-     (* PermissionsSpred2. *)
+  Utils
+  Permissions.
 
 From Coq Require Import
      Classes.Morphisms
      Classes.RelationClasses.
 (* end hide *)
-
-(* Repeatedly split all the conjunctions in the current goal *)
-Ltac split_conjs :=
-  lazymatch goal with
-  | |- (?x /\ ?y) => split; split_conjs
-  | _ => idtac
-  end.
 
 
 Section step.
@@ -277,6 +270,22 @@ Section step.
       symmetry; assumption.
   Qed.
 
+  (* NOTE: rewind_perm is NOT Proper wrt entailment, because the precondition of
+     rewind_perm p q does not include pre q, and so we can't use entails_pred
+     with q |- q' to prove inv q. Fixing this would require rewind_perm to be
+     defined using add_pre instead of set_pre.
+  (* rewind_perm is Proper wrt entailment *)
+  Global Instance Proper_ent_rewind_perm f :
+    Proper (entails_perm ==> entails_perm ==> entails_perm) (rewind_perm f).
+  Proof.
+    repeat intro. apply sep_step_entails_perm; [ apply sep_step_rg | ]; intros.
+    - apply (entails_inv _ _ H0). assumption.
+    - apply (sep_step_guar x0 y0); [ apply entails_perm_sep_step | | ]; assumption.
+    - apply (sep_step_rely x0 y0); [ apply entails_perm_sep_step | | ]; assumption.
+    - simpl in H1.  destruct_ex_conjs H1; subst. simpl.
+  Admitted.
+   *)
+
 
   (** Permission set entailment *)
 
@@ -380,6 +389,26 @@ Section step.
     repeat intro. destruct H0 as [P [? ?]].
     apply (H P H0 p H1).
   Qed.
+
+  (* NOTE: rewind is not Proper wrt entailment because rewind_perm is not
+  Global Instance Proper_ent_rewind f :
+    Proper (entails_Perms ==> entails_Perms ==> entails_Perms) (rewind f).
+  Proof.
+    repeat intro. simpl in H1. destruct_ex_conjs H1; subst.
+    destruct (H _ H2) as [py [? ?]].
+    destruct (H0 _ H1) as [py0 [? ?]].
+    exists (invperm (inv p) ** rewind_perm f py py0).
+    split.
+    - eexists. split;
+        [ exists py; exists py0; split_conjs; try assumption; reflexivity | ].
+      apply lte_r_sep_conj_perm.
+    - etransitivity; [ apply bigger_perm_entails_inv; eassumption | ].
+      apply monotone_entails_sep_conj_perm.
+      + apply separate_bigger_invperm; assumption.
+      + reflexivity.
+      + apply Proper_ent_rewind_perm; assumption.
+  Qed.
+   *)
 
 End step.
 

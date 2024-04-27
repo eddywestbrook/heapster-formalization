@@ -24,7 +24,7 @@ Local Open Scope itree_scope.
 
 
 (***
- *** Misc helper lemmas
+ *** Misc helper lemmas and tactics
  ***)
 
 (* An option that equals a Some is not equal to None *)
@@ -32,6 +32,26 @@ Lemma Some_not_None {A} opt_a (a:A) : opt_a = Some a -> opt_a <> None.
 Proof.
   intro H; rewrite H; intro; discriminate.
 Qed.
+
+(* Repeatedly split all the conjunctions in the current goal *)
+Ltac split_conjs :=
+  lazymatch goal with
+  | |- (?x /\ ?y) => split; split_conjs
+  | _ => idtac
+  end.
+
+(* Repeatedly destruct all existentials and conjunctions in a hypothesis *)
+Ltac destruct_ex_conjs H :=
+  lazymatch type of H with
+  | ex _ =>
+      let Hnew := fresh "H" in
+      destruct H as [? Hnew]; destruct_ex_conjs Hnew
+  | _ /\ _ =>
+      let H1 := fresh "H" in
+      let H2 := fresh "H" in
+      destruct H as [H1 H2]; destruct_ex_conjs H1; destruct_ex_conjs H2
+  | _ => idtac
+  end.
 
 
 (***

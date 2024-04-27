@@ -24,19 +24,6 @@ From Paco Require Import
 Import ListNotations.
 (* end hide *)
 
-(* FIXME: put this somewhere better *)
-Ltac destruct_ex_conjs H :=
-  lazymatch type of H with
-  | ex _ =>
-      let p := fresh "p" in
-      let Hnew := fresh "H" in
-      destruct H as [p Hnew]; destruct_ex_conjs Hnew
-  | _ /\ _ =>
-      let H1 := fresh "H" in
-      let H2 := fresh "H" in
-      destruct H as [H1 H2]; destruct_ex_conjs H1; destruct_ex_conjs H2
-  | _ => idtac
-  end.
 
 Section LifetimePerms.
   Context {S : Type}.
@@ -798,10 +785,6 @@ Section LifetimeRules.
   Qed.
 
 
-  Global Instance Proper_ent_rewind (f : S -> S) :
-    Proper (entails_Perms ==> entails_Perms ==> entails_Perms) (rewind f).
-  Admitted.
-
   (* The rule for splitting the lifetime of a singleton permission *)
   Lemma lowned_split l ls p Q R :
     p ⊥ lowned_perm l ls -> p ⊥ lowned_perm l (fun _ => False) ->
@@ -839,15 +822,17 @@ Section LifetimeRules.
     apply monotone_entails_sep_conj.
     - etransitivity; [ | apply lfinished_after_recover_singleton; eassumption ].
       apply monotone_entails_sep_conj; [ reflexivity | ].
-      apply Proper_ent_rewind; [ | apply entails_r_sep_conj ].
-      apply monotone_entails_sep_conj; [ reflexivity | ].
-      etransitivity; [ apply entails_l_sep_conj | ]. apply entails_l_sep_conj.
+      apply bigger_Perms_entails.
+      apply Proper_lte_rewind; [ | apply lte_r_sep_conj_Perms ].
+      apply sep_conj_Perms_monotone; [ reflexivity | ].
+      etransitivity; apply lte_l_sep_conj_Perms.
     - etransitivity; [ | apply H2 ].
       apply monotone_entails_sep_conj; [ reflexivity | ].
-      apply Proper_ent_rewind; [ | reflexivity ].
+      apply bigger_Perms_entails.
+      apply Proper_lte_rewind; [ | reflexivity ].
       rewrite <- (sep_conj_Perms_assoc (lowned_Perms l _) Q P).
-      apply monotone_entails_sep_conj; [ reflexivity | ].
-      apply entails_r_sep_conj.
+      apply sep_conj_Perms_monotone; [ reflexivity | ].
+      apply lte_r_sep_conj_Perms.
   Qed.
 
 (* End LifetimeRules. *)
