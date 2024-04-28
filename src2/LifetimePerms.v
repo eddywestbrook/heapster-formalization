@@ -695,15 +695,41 @@ Section LifetimeRules.
   Definition rewind_lt_impl l P Q :=
     meet_Perms (fun R =>
                   lfinished l *
-                    rewind_lt l (lowned_Perms l (fun _ => False) * P * R) (P * R) ⊨ Q).
+                    rewind_lt l (lowned_Perms l (fun _ => False) * (P * R)) (P * R) ⊨ Q).
 
-  Lemma rewind_lt_impl_adj_lr l P Q R :
+  (* rewind_lt_impl is Proper wrt permission set equality *)
+  Global Instance Proper_eq_rewind_lt_impl l :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (rewind_lt_impl l).
+  Proof.
+    intros P1 P2 eqP Q1 Q2 eqQ; split; apply meet_Perms_max; intros;
+      apply lte_meet_Perms; eexists; (split; [ | reflexivity ]).
+    - rewrite eqP. rewrite eqQ. assumption.
+    - rewrite <- eqP. rewrite <- eqQ. assumption.
+  Qed.
+
+  (* P entails a rewind_lt_impl if it satisfies the rewind_lt_impl condition *)
+  Lemma rewind_lt_impl_lambda l P Q R :
     lfinished l *
-      rewind_lt l (lowned_Perms l (fun _ => False) * Q * P) (Q * P) ⊨ R ->
+      rewind_lt l (lowned_Perms l (fun _ => False) * (Q * P)) (Q * P) ⊨ R ->
     P ⊨ rewind_lt_impl l Q R.
   Proof.
     repeat intro.
     exists p. split; [ | reflexivity ]. exists P. split; assumption.
+  Qed.
+
+  (* A rewind_lt_impl can be "partially applied" *)
+  Lemma rewind_lt_impl_part_apply l P Q R :
+    P * rewind_lt_impl l (P * Q) R ⊨ rewind_lt_impl l Q R.
+  Proof.
+    rewrite (sep_conj_Perms_commut P Q).
+    rewrite (sep_conj_Perms_commut P (rewind_lt_impl l _ _)).
+    unfold rewind_lt_impl.
+    rewrite sep_conj_Perms_meet_commute.
+    apply meet_Perms_max_ent; intros P0 [P' [? ?]]; subst.
+    apply ent_meet_Perms.
+    eexists; split; [ | reflexivity ].
+    rewrite (sep_conj_Perms_commut P' P).
+    rewrite (sep_conj_Perms_assoc Q P). assumption.
   Qed.
 
 
@@ -792,7 +818,6 @@ Section LifetimeRules.
     exists (P * after l (singleton_Perms p)).
     split; [ | reflexivity ].
     rewrite (sep_conj_Perms_commut P (after l _)).
-    rewrite <- (sep_conj_Perms_assoc (lowned_Perms l _)).
     rewrite sep_conj_Perms_distrib.
     (* FIXME: set up the right Proper instances to make this use rewriting *)
     etransitivity;
@@ -811,9 +836,21 @@ Section LifetimeRules.
       apply monotone_entails_sep_conj; [ reflexivity | ].
       apply bigger_Perms_entails.
       apply Proper_lte_rewind; [ | reflexivity ].
-      rewrite <- (sep_conj_Perms_assoc (lowned_Perms l _) Q P).
       apply sep_conj_Perms_monotone; [ reflexivity | ].
       apply lte_r_sep_conj_Perms.
+  Qed.
+
+
+  (* The rule to return part of the LHS permission of an lowned *)
+  Lemma lowned_part_return l ls P Q R :
+    P * lowned l ls (P * Q) R ⊨ lowned l ls Q R.
+  Proof.
+    unfold lowned.
+    rewrite sep_conj_Perms_assoc.
+    rewrite (sep_conj_Perms_commut P).
+    rewrite <- sep_conj_Perms_assoc.
+    apply monotone_entails_sep_conj; [ reflexivity | ].
+    apply rewind_lt_impl_part_apply.
   Qed.
 
 (* End LifetimeRules. *)
