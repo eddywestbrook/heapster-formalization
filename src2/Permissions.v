@@ -1680,26 +1680,37 @@ Section Permissions.
   Global Instance gte_Perms_is_preorder : PreOrder gte_Perms.
   Proof. constructor; repeat intro; auto. Qed.
 
-  (** Various lattice definitions. *)
+  Global Instance Proper_lte_in_Perms :
+    Proper (lte_Perms --> lte_perm ==> Basics.impl) in_Perms.
+  Proof.
+    repeat intro. apply H. eapply Perms_upwards_closed; eassumption.
+  Qed.
+
+
+  (* The greatest permission set in the ordering *)
   Program Definition top_Perms : Perms :=
     {|
       in_Perms := fun r => False
     |}.
 
+  (* Top is bigger than anything *)
   Lemma top_Perms_is_top : forall P, P ⊑ top_Perms.
   Proof.
     repeat intro. inversion H.
   Qed.
 
+  (* The least permission set in the ordering *)
   Program Definition bottom_Perms : Perms :=
     {|
       in_Perms := fun r => True
     |}.
 
+  (* Bottom is smaller than anything *)
   Lemma bottom_Perms_is_bottom : forall P, bottom_Perms ⊑ P.
   Proof.
     repeat intro. simpl. auto.
   Qed.
+
 
   (** The least Perms set containing a given p *)
   Program Definition singleton_Perms p1 : Perms :=
@@ -1831,6 +1842,32 @@ Section Permissions.
     repeat intro; subst. apply H. eapply Perms_upwards_closed; eauto.
   Qed.
 
+
+  (* The permission set representing a proposition: if the proposition holds,
+     then it is the trivial bottom permission, otherwise it is the inconsistent
+     top permission *)
+  Program Definition prop_Perms (P:Prop) : Perms :=
+    {|
+      in_Perms := fun _ => P
+    |}.
+
+  (* prop_Perms equals bottom iff P holds *)
+  Lemma prop_Perms_bottom P : prop_Perms P ≡ bottom_Perms <-> P.
+  Proof.
+    split; [ | split ]; repeat intro.
+    - destruct H. apply (H bottom_perm). apply I.
+    - apply H.
+    - apply I.
+  Qed.
+
+  (* prop_Perms equals top iff P does not hold *)
+  Lemma prop_Perms_top P : prop_Perms P ≡ top_Perms <-> ~ P.
+  Proof.
+    split; [ | split ]; repeat intro.
+    - destruct H. apply (H1 bottom_perm H0).
+    - elimtype False; assumption.
+    - elimtype False; apply H; apply H0.
+  Qed.
 
   (* Map a function over a permission set to build a new one *)
   Definition mapPerms (f : perm -> perm) (P : Perms) : Perms :=

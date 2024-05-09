@@ -164,6 +164,9 @@ Section PLensPerms.
    *** Read and write permission sets
    ***)
 
+  (* A value indicating whether an ixplens permission is a read or write *)
+  Variant RWModality := Write | Read.
+
   (* Dependent write permissions are permissions to write to ix along with
   permission P to the value that is currently stored at ix *)
   Definition ixplens_write_dep ix (P : Elem -> Perms) : Perms :=
@@ -177,6 +180,51 @@ Section PLensPerms.
     meet_Perms
       (fun R => exists elem,
            R = singleton_Perms (ixplens_read_perm_eq ix elem) * (P elem)).
+
+  (* An ixplens permission that is either write or read *)
+  Definition ixplens_dep rw ix P :=
+    match rw with
+    | Write => ixplens_write_dep ix P
+    | Read => ixplens_read_dep ix P
+    end.
+
+  (* The entailment rule for writing to a dependent write permission, which says
+  that if you have write_dep perms to ix then putting elem to ix results in a
+  write_dep permission whose contents equal elem *)
+  Lemma ixplens_write_ent ix P elem :
+    rewind (fun x => iput ix x elem)
+      (ixplens_write_dep ix P) (ixplens_write_dep ix P)
+      ⊨ ixplens_write_dep ix (fun e => prop_Perms (e = elem)).
+  Proof.
+    apply bigger_Perms_entails. repeat intro.
+    simpl in H; destruct_ex_conjs H; subst.
+    refine (lte_meet_Perms _ (singleton_Perms _) _ p H1).
+    eexists; split; [ exists elem; reflexivity | ].
+    rewrite (proj2 (prop_Perms_bottom _)); [ | reflexivity ].
+    rewrite sep_conj_Perms_commut; rewrite sep_conj_Perms_bottom_identity.
+    apply lte_singleton_Perms.
+    constructor; intros.
+    - simpl in H0. destruct_ex_conjs H0; subst.
+      exists elem. split; [ | reflexivity ].
+      transitivity (iget ix (iput ix x4 elem)); [ | apply iGetPut_eq ].
+      symmetry. eapply (rely_inc (ixplens_write_perm_eq ix x5) x1); try assumption.
+      + rewrite <- lte_l_sep_conj_Perms in H5. apply H5.
+      + rewrite iGetPut_eq. eapply Some_not_None; reflexivity.
+    - rewrite <- lte_l_sep_conj_Perms in H5.
+      apply (rely_inc (ixplens_write_perm_eq ix x5) x1); assumption.
+    - rewrite <- lte_l_sep_conj_Perms in H5.
+      apply (guar_inc (ixplens_write_perm_eq ix x5) x1); assumption.
+    - rewrite <- lte_l_sep_conj_Perms in H5.
+      apply (inv_inc (ixplens_write_perm_eq ix x5) x1); assumption.
+  Qed.
+
+  (* The entailment rule for reading a dependent write permission *)
+  Lemma ixplens_read_ent rw ix P elem (pred : St -> Prop) :
+    (forall x, pred x -> iget ix x = Some elem) ->
+    add_pre pred (ixplens_dep rw ix P)
+      ⊨ ixplens_dep rw ix (fun e => prop_Perms (e = elem)) * P elem.
+  Proof.
+  Admitted.
 
 
   (***
