@@ -167,6 +167,13 @@ Section PLensPerms.
   (* A value indicating whether an ixplens permission is a read or write *)
   Variant RWModality := Write | Read.
 
+  (* A read or write permission whose contents equal a value *)
+  Definition ixplens_perm_eq rw ix elem :=
+    match rw with
+    | Write => ixplens_write_perm_eq ix elem
+    | Read => ixplens_read_perm_eq ix elem
+    end.
+
   (* Dependent write permissions are permissions to write to ix along with
   permission P to the value that is currently stored at ix *)
   Definition ixplens_write_dep ix (P : Elem -> Perms) : Perms :=
@@ -188,6 +195,19 @@ Section PLensPerms.
     | Read => ixplens_read_dep ix P
     end.
 
+  (* An alternate definition of ixplens_dep as a meet *)
+  Definition ixplens_dep_alt rw ix P :=
+    meet_Perms
+      (fun R => exists elem,
+           R = singleton_Perms (ixplens_perm_eq rw ix elem) * (P elem)).
+
+  (* The two definitions of ixplens_dep are equal *)
+  Lemma ixplens_dep_alt_eq rw ix P :
+    ixplens_dep rw ix P ≡ ixplens_dep_alt rw ix P.
+  Proof.
+    destruct rw; reflexivity.
+  Qed.
+
   (* The entailment rule for writing to a dependent write permission, which says
   that if you have write_dep perms to ix then putting elem to ix results in a
   write_dep permission whose contents equal elem *)
@@ -202,7 +222,7 @@ Section PLensPerms.
     eexists; split; [ exists elem; reflexivity | ].
     rewrite (proj2 (prop_Perms_bottom _)); [ | reflexivity ].
     rewrite sep_conj_Perms_commut; rewrite sep_conj_Perms_bottom_identity.
-    apply lte_singleton_Perms.
+    apply Proper_singleton_Perms.
     constructor; intros.
     - simpl in H0. destruct_ex_conjs H0; subst.
       exists elem. split; [ | reflexivity ].
@@ -218,13 +238,34 @@ Section PLensPerms.
       apply (inv_inc (ixplens_write_perm_eq ix x5) x1); assumption.
   Qed.
 
-  (* The entailment rule for reading a dependent write permission *)
+
+  (* The entailment rule for reading a dependent lens permission, which says
+  that if you have read_dep or write_dep permissions to ix with permissions P on
+  the value contained at ix, then if you read from ix (resulting in a predicate
+  pred that ensures the value at ix = elem) then you get back a read_dep or
+  write_dep with a value equal to elem, to which you also have permissions P *)
   Lemma ixplens_read_ent rw ix P elem (pred : St -> Prop) :
     (forall x, pred x -> iget ix x = Some elem) ->
-    add_pre pred (ixplens_dep rw ix P)
+    add_poss_pre pred (ixplens_dep rw ix P)
       ⊨ ixplens_dep rw ix (fun e => prop_Perms (e = elem)) * P elem.
   Proof.
-  Admitted.
+    intro. repeat rewrite ixplens_dep_alt_eq.
+    apply add_poss_pre_meet_ent. intros. destruct H0; subst.
+    etransitivity; [ apply add_pre_ent_P | ].
+    unfold ixplens_dep_alt. rewrite sep_conj_Perms_meet_commute.
+    eapply ent_meet_Perms.
+    eexists; split; [ eexists; split; [ reflexivity | exists elem; reflexivity ] | ].
+    assert (x0 = elem).
+    1: { apply Perms_field_conj_elim in H1. destruct H1.
+         apply Perms_field_singleton_elim in H0. destruct H0.
+         unfold Perms_field in H1; simpl in H1.
+         destruct rw; simpl in H0; destruct_ex_conjs H0; subst; rewrite (H _ H2) in H0;
+         inversion H0; reflexivity. }
+    erewrite (proj2 (prop_Perms_bottom _)); [ | reflexivity ]. subst.
+    rewrite (sep_conj_Perms_commut _ bottom_Perms).
+    rewrite sep_conj_Perms_bottom_identity.
+    reflexivity.
+  Qed.
 
 
   (***

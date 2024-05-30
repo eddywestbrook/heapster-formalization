@@ -290,7 +290,7 @@ Section bisim.
   the right relative to any input permission set P with output permission set
   adding a precondition to P that the state equals the returned value *)
   Lemma typing_read_L P :
-    typing P (fun x _ => add_pre (fun c12 => fst c12 = x) P) read (Ret tt).
+    typing P (fun x _ => add_poss_pre (fun c12 => fst c12 = x) P) read (Ret tt).
   Proof.
     repeat intro. pstep.
     apply (sbuter_gen_modify_L _ _ _ _ _ _ _ _ (add_pre_perm (fun c12 => fst c12 = c1) p));
@@ -300,8 +300,11 @@ Section bisim.
     - split; [ assumption | ]. exists (c1,c2). split; [ assumption | ].
       split; reflexivity.
     - assumption.
-    - eexists; split; [ | reflexivity ].
-      exists p; split; [ assumption | reflexivity ].
+    - eexists. split; [ | reflexivity ]. split.
+      + eexists. split; [ | reflexivity ].
+        exists p; split; [ assumption | reflexivity ].
+      + exists (c1, c2). split; split; try assumption; try reflexivity.
+        exists (c1, c2). split; [ assumption | split; reflexivity ].
   Qed.
 
   (* Apply a function to the first element of a pair *)

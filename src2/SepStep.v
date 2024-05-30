@@ -390,6 +390,110 @@ Section step.
     apply (H P H0 p H1).
   Qed.
 
+  (* A join is an upper bound wrt entailment for all its elements *)
+  Lemma ent_join_Perms : forall (Ps : Perms -> Prop) P,
+      (exists Q, Ps Q /\ Q ⊨ P) ->
+      join_Perms Ps ⊨ P.
+  Proof.
+    repeat intro. destruct H as [Q [? ?]].
+    destruct (H1 p (H0 Q H)) as [q [? ?]].
+    exists q; split; assumption.
+  Qed.
+
+  (* FIXME: the Q ⊨ P proof for each P in Ps could yield a *different*
+  permission in P for each P, so this requires a join on perm *)
+  (*
+  Lemma join_Perms_min_ent : forall (Ps : Perms -> Prop) Q,
+      (forall P, Ps P -> Q ⊨ P) ->
+      Q ⊨ join_Perms Ps.
+  Proof.
+    repeat intro.
+   *)
+
+  Lemma ent_join_Perms2 P Q R : (Q ⊨ P \/ R ⊨ P) -> join_Perms2 Q R ⊨ P.
+  Proof.
+    intro. apply ent_join_Perms.
+    destruct H; eexists; (split; [ | eassumption ]);
+      solve [ left; reflexivity | right; reflexivity ].
+  Qed.
+
+  (* FIXME: requires a binary join on perm *)
+  (*
+  Lemma join_Perms2_min_ent P Q R : R ⊨ P -> R ⊨ Q -> R ⊨ join_Perms2 P Q.
+  Proof.
+    intros.
+   *)
+
+  (* A prop_Perms on the left entails a permission if its proposition implies
+  the entailment *)
+  Lemma prop_Perms_ent (P:Prop) Q R : (P -> Q ⊨ R) -> prop_Perms P * Q ⊨ R.
+  Proof.
+    repeat intro.
+    assert (pf : P); [ destruct H0 as [q' [q [pf ?]]]; assumption | ].
+    rewrite (proj2 (prop_Perms_bottom P) pf) in H0.
+    rewrite sep_conj_Perms_bottom_identity in H0.
+    destruct (H pf p H0) as [r [? ?]].
+    exists r; split; assumption.
+  Qed.
+
+  (* A mkPerms entails P if the singleton of one of its elements does *)
+  Lemma mkPerms_ent (Ps : perm -> Prop) Q :
+    (forall p, Ps p -> singleton_Perms p ⊨ Q) -> mkPerms Ps ⊨ Q.
+  Proof.
+    intro H. rewrite mkPerms_meet.
+    apply meet_Perms_max_ent; intros. destruct_ex_conjs H0; subst.
+    apply H; assumption.
+  Qed.
+
+  (* Adding a precondition yields a bigger permission set wrt entailment *)
+  Lemma add_pre_ent_P (pred : config -> Prop) P : add_pre pred P ⊨ P.
+  Proof.
+    apply bigger_Perms_entails; apply add_pre_gte_P.
+  Qed.
+
+  Lemma add_poss_pre_ent (pred : config -> Prop) P Q :
+    (forall p x, p ∈ add_pre pred P -> pre p x -> inv p x -> pred x ->
+                 singleton_Perms p ⊨ Q) ->
+    add_poss_pre pred P ⊨ Q.
+  Proof.
+    unfold add_poss_pre. intro H. rewrite mkPerms_meet.
+    apply meet_Perms_max_ent; intros. destruct_ex_conjs H0; subst.
+    eapply H; eassumption.
+  Qed.
+
+  Lemma add_poss_pre_meet_ent (pred : config -> Prop) (Ps : Perms -> Prop) Q :
+    (forall P x, Ps P -> Perms_field P x -> pred x -> add_pre pred P ⊨ Q) ->
+    add_poss_pre pred (meet_Perms Ps) ⊨ Q.
+  Proof.
+    unfold add_poss_pre. intro H. rewrite mkPerms_meet.
+    apply meet_Perms_max_ent; intros. simpl in H0. destruct_ex_conjs H0; subst.
+    etransitivity; [ | apply (H x2 x3); try assumption ].
+    - apply bigger_Perms_entails. repeat intro. simpl in H0.
+      eexists; split; [ eexists; split; [ eassumption | reflexivity ] | ].
+      etransitivity; eassumption.
+    - exists x. repeat split; try assumption.
+      eapply Perms_upwards_closed; [ eassumption | ].
+      etransitivity; [ | eassumption ].
+      constructor; try (intros; assumption).
+      intros. destruct H5; assumption.
+  Qed.
+
+  (*
+  Lemma add_poss_pre_meet_ent (pred : config -> Prop) (Ps : Perms -> Prop) Q :
+    (forall p P x, Ps P -> p ∈ P -> pre p x -> inv p x -> pred x ->
+                   add_pre pred (singleton_Perms p) ⊨ Q) ->
+    add_poss_pre pred (meet_Perms Ps) ⊨ Q.
+  Proof.
+    intro H. apply add_poss_pre_ent. intros.
+    simpl in H0; destruct_ex_conjs H0; subst.
+    rewrite <- H5.
+    
+
+    apply H.
+
+    unfold add_poss_pre. intro H. rewrite mkPerms_meet.
+  *)
+
   (* NOTE: rewind is not Proper wrt entailment because rewind_perm is not
   Global Instance Proper_ent_rewind f :
     Proper (entails_Perms ==> entails_Perms ==> entails_Perms) (rewind f).
