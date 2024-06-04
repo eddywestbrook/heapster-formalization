@@ -176,7 +176,7 @@ Section LifetimePerms.
   Qed.
 
   (* Helper lemma for the lifetime subsumption rule *)
-  Lemma lowned_subsume_step l1 ls1 l2 ls2 :
+  Lemma lowned_perm_subsume_step l1 ls1 l2 ls2 :
     l1 <> l2 ->
     sep_step (lowned_perm l1 ls1 ** lowned_perm l2 ls2)
       (lowned_perm l1 (eq l2 \1/ ls1) ** lowned_perm l2 ls2).
@@ -202,13 +202,13 @@ Section LifetimePerms.
   Qed.
 
   (* If we own two unequal lifetimes then we can subsume one inside the other *)
-  Lemma lowned_subsume l1 ls1 l2 ls2 :
+  Lemma lowned_perm_subsume l1 ls1 l2 ls2 :
     l1 <> l2 ->
     lowned_perm l1 ls1 ** lowned_perm l2 ls2 ⊢
       lowned_perm l1 (eq l2 \1/ ls1) ** lowned_perm l2 ls2.
   Proof.
     intro; apply sep_step_entails_perm;
-      [ apply lowned_subsume_step; assumption | ].
+      [ apply lowned_perm_subsume_step; assumption | ].
     intros. destruct H0 as [[[? ?] [[? ?] ?]] [? ?]]. simpl in H5. simpl in H6.
     split; [ split; [ split | split; [ split | ] ] | split ].
     - rewrite H5; reflexivity.
@@ -687,6 +687,19 @@ Section LifetimeRules.
   (* The singleton Perms set containing lowned_perm l ls *)
   Definition lowned_Perms l ls : Perms := singleton_Perms (lowned_perm l ls).
 
+  (* Helper for lowned_subsume, below *)
+  Lemma lowned_Perms_subsume l1 ls1 l2 ls2 :
+    l1 <> l2 ->
+    lowned_Perms l1 ls1 * lowned_Perms l2 ls2 ⊨
+      lowned_Perms l1 (eq l2 \1/ ls1) * lowned_Perms l2 ls2.
+  Proof.
+    intro H. unfold lowned_Perms.
+    repeat rewrite sep_conj_singleton; try (apply lowned_lowned_separate; assumption).
+    apply entails_singleton_Perms.
+    apply lowned_perm_subsume. assumption.
+  Qed.
+
+
   (* Permission set P was held before l was ended, and now we hold Q *)
   Definition rewind_lt l P Q := rewind (fun x => end_lifetime x l) P Q.
 
@@ -738,6 +751,18 @@ Section LifetimeRules.
   Definition lowned l ls P Q :=
     lowned_Perms l ls * rewind_lt_impl l P Q.
 
+  (* If we own two unequal lifetimes then we can subsume one inside the other *)
+  Lemma lowned_subsume l1 ls1 P1 Q1 l2 ls2 P2 Q2 :
+    l1 <> l2 ->
+    lowned l1 ls1 P1 Q1 * lowned l2 ls2 P2 Q2 ⊨
+      lowned l1 (eq l2 \1/ ls1) P1 Q1 * lowned l2 ls2 P2 Q2.
+  Proof.
+    intro. unfold lowned.
+    rewrite (sep_conj_Perms_distrib (lowned_Perms l1 ls1)).
+    rewrite (sep_conj_Perms_distrib (lowned_Perms l1 (eq l2 \1/ ls1))).
+    apply monotone_entails_sep_conj; [ | reflexivity ].
+    apply lowned_Perms_subsume; assumption.
+  Qed.
 
   (* A singleton permission set that is separate from lowned can be split into
   when and after *)
