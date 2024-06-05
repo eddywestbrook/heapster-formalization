@@ -43,12 +43,12 @@ Section permType.
   (** * Permission types *)
 
   Record PermType (A B : Type) : Type :=
-    { ptApp : A -> B -> @Perms2 (Si * Ss) }.
+    { ptApp : A -> B -> @Perms (Si * Ss) }.
   Definition VPermType A := PermType Value A.
   Notation "xi :: T ▷ xs" := (ptApp _ _ T xi xs) (at level 35).
 
-  Definition withPerms {Ai As} (T : PermType Ai As) (P : @Perms2 (Si * Ss)) : PermType Ai As:=
-    {| ptApp:= fun ai abs => (ai :: T ▷ abs) *2 P |}.
+  Definition withPerms {Ai As} (T : PermType Ai As) (P : @Perms (Si * Ss)) : PermType Ai As:=
+    {| ptApp:= fun ai abs => (ai :: T ▷ abs) * P |}.
   Notation "T ∅ P" := (withPerms T P) (at level 40).
 
   Definition plusPT {A1 A2 B1 B2}
@@ -57,18 +57,18 @@ Section permType.
                   match (eithA, eithB) with
                   | (inl a1, inl b1) => a1 :: T1 ▷ b1
                   | (inr a2, inr b2) => a2 :: T2 ▷ b2
-                  | _ => top_Perms2
+                  | _ => top_Perms
                   end |}.
   Notation "T1 ⊕ T2" := (plusPT T1 T2) (at level 50).
 
   Definition timesPT {A1 A2 B1 B2}
              (T1 : PermType A1 B1) (T2 : PermType A2 B2) : PermType (A1 * A2) (B1 * B2) :=
-    {| ptApp := fun a12 b12 => fst a12 :: T1 ▷ fst b12 *2 snd a12 :: T2 ▷ snd b12 |}.
+    {| ptApp := fun a12 b12 => fst a12 :: T1 ▷ fst b12 * snd a12 :: T2 ▷ snd b12 |}.
   Notation "T1 ⊗ T2" := (timesPT T1 T2) (at level 40).
 
   Definition starPT {Ai As Bs} (T1 : PermType Ai As) (T2 : PermType Ai Bs)
     : PermType Ai (As * Bs) :=
-    {| ptApp := fun ai abs => (ai :: T1 ▷ fst abs) *2 (ai :: T2 ▷ snd abs) |}.
+    {| ptApp := fun ai abs => (ai :: T1 ▷ fst abs) * (ai :: T2 ▷ snd abs) |}.
   Notation "T1 ⋆ T2" := (starPT T1 T2) (at level 40).
 
   Definition existsPT {Ai As} {Bs : As -> Type}
@@ -82,12 +82,12 @@ Section permType.
                   sum_rect _ (ptApp _ _ T1 ai) (ptApp _ _ T2 ai) abs |}.
 
   Definition trueP {A B} : PermType A B :=
-    {| ptApp := fun _ _ => bottom_Perms2 |}.
+    {| ptApp := fun _ _ => bottom_Perms |}.
   Definition falseP {A B} : PermType A B :=
-    {| ptApp := fun _ _ => top_Perms2 |}.
+    {| ptApp := fun _ _ => top_Perms |}.
 
   Program Definition eqp {A} (a : A): PermType A unit :=
-    {| ptApp := fun a' _ => {| in_Perms2 _ _ := a = a' |} |}.
+    {| ptApp := fun a' _ => prop_Perms (a = a') |}.
 
   (** * Operations used in typing rules *)
 
@@ -112,7 +112,7 @@ Section permType.
 
   (** The ordering on permission types is just the lifting of that on Perms *)
   Definition lte_PermType {A B} (T1 T2 : PermType A B): Prop :=
-    forall a b, lte_Perms2 (ptApp _ _ T1 a b) (ptApp _ _ T2 a b).
+    forall a b, lte_Perms (ptApp _ _ T1 a b) (ptApp _ _ T2 a b).
 
   (** Equals on PermType is just the symmetric closure of the ordering *)
   Definition eq_PermType {A B} (T1 T2 : PermType A B): Prop :=
@@ -134,7 +134,7 @@ Section permType.
   Qed.
 
   Global Instance Proper_eq_PermType_ptApp A B :
-    Proper (eq_PermType ==> eq ==> eq ==> eq_Perms2) (ptApp A B).
+    Proper (eq_PermType ==> eq ==> eq ==> eq_Perms) (ptApp A B).
   Proof.
     intros T1 T2 eT a1 a2 ea b1 b2 eb. rewrite ea; rewrite eb.
     destruct eT. split; [ apply H | apply H0 ].
@@ -142,13 +142,14 @@ Section permType.
 
   (** The meet on permission types is just the lifitng of that on Perms *)
   Definition meet_PermType {A B} (Ts : PermType A B -> Prop) : PermType A B :=
-    {| ptApp := fun a b => meet_Perms2 (fun P => exists T, Ts T /\ P = (a :: T ▷ b)) |}.
+    {| ptApp := fun a b => meet_Perms (fun P => exists T, Ts T /\ P = (a :: T ▷ b)) |}.
 
   (** Meet is a lower bound for PermType *)
   Lemma lte_meet_PermType {A B} (Ts : PermType A B -> Prop) T:
     Ts T -> lte_PermType (meet_PermType Ts) T.
   Proof.
-    intros ts_t a b. simpl. apply lte_meet_Perms2. exists T; split; eauto.
+    intros ts_t a b. apply lte_meet_Perms. exists (ptApp _ _ T a b); split; eauto.
+    reflexivity.
   Qed.
 
   (** Meet is the greatest lower bound for PermType *)
@@ -156,7 +157,7 @@ Section permType.
     (forall T', Ts T' -> lte_PermType T T') ->
     lte_PermType T (meet_PermType Ts).
   Proof.
-    intros lte_T_Ts a b. apply meet_Perms2_max. intros P [ T' [ Ts_T' P_eq ]].
+    intros lte_T_Ts a b. apply meet_Perms_max. intros P [ T' [ Ts_T' P_eq ]].
     rewrite P_eq. apply (lte_T_Ts T' Ts_T' a b).
   Qed.
 
