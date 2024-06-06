@@ -273,7 +273,8 @@ Section step.
   (* NOTE: rewind_perm is NOT Proper wrt entailment, because the precondition of
      rewind_perm p q does not include pre q, and so we can't use entails_pred
      with q |- q' to prove inv q. Fixing this would require rewind_perm to be
-     defined using add_pre instead of set_pre.
+     defined using add_pre instead of set_pre, which we don't want to do because
+     using set_pre here is specifically the point of rewind_perm.
   (* rewind_perm is Proper wrt entailment *)
   Global Instance Proper_ent_rewind_perm f :
     Proper (entails_perm ==> entails_perm ==> entails_perm) (rewind_perm f).
@@ -285,6 +286,33 @@ Section step.
     - simpl in H1.  destruct_ex_conjs H1; subst. simpl.
   Admitted.
    *)
+
+  (* A rewind permission that had the same p before and after f was applied *)
+  Definition rewind_same_perm (f : config -> config) p := rewind_perm f p p.
+
+  (* rewind_same_perm f is monotone wrt p |- q if f is in the rely of q *)
+  Lemma mono_ent_rewind_same_perm f p q :
+    (forall x, rely q x (f x)) ->
+    p ⊢ q -> rewind_same_perm f p ⊢ rewind_same_perm f q.
+  Proof.
+    repeat intro. apply sep_step_entails_perm; [ apply sep_step_rg | ]; intros.
+    - apply (entails_inv _ _ H0). assumption.
+    - apply (sep_step_guar p q); [ apply entails_perm_sep_step | | ]; assumption.
+    - apply (sep_step_rely p q); [ apply entails_perm_sep_step | | ]; assumption.
+    - simpl in H1. destruct_ex_conjs H1; subst.
+      assert (inv q x1 /\ pre q x1) as [? ?];
+        [ eapply entails_pred; [ eassumption | split; assumption ] | ].
+      pose (H x1).
+      assert (inv q (f x1) /\ pre q (f x1)) as [? ?];
+        [ split; [ eapply inv_rely | eapply pre_respects ]; eassumption | ].
+      assert (rely q (f x1) x);
+        [ eapply sep_step_rely; try apply entails_perm_sep_step; eassumption | ].
+      assert (inv q x /\ pre q x) as [? ?];
+        [ split; [ eapply inv_rely | eapply pre_respects ]; eassumption | ].
+      split; [ assumption | ].
+      exists (f x1). split; [ assumption | ]. split; [ | assumption ].
+      eexists; split; [ reflexivity | split; assumption ].
+  Qed.
 
 
   (** Permission set entailment *)
