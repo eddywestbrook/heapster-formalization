@@ -315,6 +315,40 @@ Section step.
   Qed.
 
 
+  (* A stronger version of the above (FIXME: better docs) *)
+  Lemma mono_ent_conj_rewind_same_perm f p q r :
+    (forall x, rely p x (f x)) -> p ⊥ r ->
+    p ⊢ q -> rewind_same_perm f (p ** r) ⊢ rewind_same_perm f (q ** r).
+  Proof.
+    intros.
+    assert (p ** r ⊢ q ** r);
+      [ apply monotone_entails_sep_conj_perm; try assumption; reflexivity | ].
+    apply sep_step_entails_perm; [ apply sep_step_rg | ]; intros.
+    - apply (entails_inv _ _ H2). assumption.
+    - apply (sep_step_guar (p ** r) (q ** r)); [ apply entails_perm_sep_step | | ]; assumption.
+    - apply (sep_step_rely (p ** r) (q ** r)); [ apply entails_perm_sep_step | | ]; assumption.
+    - simpl in H3. destruct_ex_conjs H3; subst.
+      assert (q ⊥ r); [ eapply entails_sep; eassumption | ].
+      assert (inv q x1 /\ pre q x1) as [? ?];
+        [ eapply entails_pred; [ eassumption | split; assumption ] | ].
+      assert (pre p (f x1)); [ eapply pre_respects; try apply H; eassumption | ].
+      pose (H x1).
+      assert (pre p x); [ eapply pre_respects; [ etransitivity | ]; eassumption | ].
+      assert (inv q (f x1) /\ pre q (f x1)) as [? ?];
+        [ eapply entails_pred; [ | split ]; eassumption | ].
+      assert (inv q x /\ pre q x) as [? ?];
+        [ eapply entails_pred; [ | split ]; eassumption | ].
+      assert (rely q (f x1) x);
+        [ eapply sep_step_rely; try apply entails_perm_sep_step; try eassumption | ].
+      split.
+      + split; [ | split ]; assumption.
+      + exists (f x1). split; [ split; [ | split ]; assumption | ].
+        split; [ | split; assumption ].
+        eexists. split; [ reflexivity | ].
+        split; [ split; [ | split ] | split ]; assumption.
+  Qed.
+
+
   (** Permission set entailment *)
 
   Definition entails_Perms P Q :=
