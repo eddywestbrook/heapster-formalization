@@ -1651,6 +1651,55 @@ Section Permissions.
   Qed.
 
 
+  (* rewind_perm f p p is greater than p when f is in the rely of p *)
+  Lemma rewind_self_gte f p :
+    (forall x, inv p x -> pre p x -> rely p x (f x)) ->
+    rewind_perm f p p >= p.
+  Proof.
+    constructor; intros; try assumption.
+    simpl in H0. simpl in H1. destruct_ex_conjs H1; subst.
+    eapply pre_respects; [ | eassumption ].
+    etransitivity; [ apply H | ]; eassumption.
+  Qed.
+
+  (* rewind_perm f (p**q) q is greater than q when f is in the rely of q *)
+  Lemma rewind_conj_rely_gte f p q :
+    (forall x, inv (p**q) x -> pre (p**q) x -> rely q x (f x)) ->
+    rewind_perm f (p ** q) q >= q.
+  Proof.
+    constructor; intros; try assumption.
+    simpl in H0. simpl in H1. destruct_ex_conjs H1; subst.
+    eapply pre_respects; [ | eassumption ].
+    etransitivity; [ | eassumption ].
+    apply H; [ | split; assumption ].
+    repeat (split; try assumption).
+  Qed.
+
+  (* rewind_perm f (p**q) q is greater than q when f is in the guarantee of p
+     and p is separate from q *)
+  Lemma rewind_conj_sep_gte f p q :
+    (forall x, inv (p**q) x -> pre (p**q) x -> guar p x (f x)) -> p ⊥ q ->
+    rewind_perm f (p ** q) q >= q.
+  Proof.
+    intros; apply rewind_conj_rely_gte; intros.
+    destruct H1 as [? [? ?]]. destruct H2.
+    eapply sep_r; try apply H; try eassumption; repeat (split; try assumption).
+  Qed.
+
+  (* rewind_perm distributes over separating conjunction *)
+  Lemma rewind_perm_conj f p q r :
+    rewind_perm f p (q ** r) >= rewind_perm f p q ** rewind_perm f p r.
+  Proof.
+    constructor; intros; try assumption.
+    - simpl in H; destruct_ex_conjs H. simpl in H0; destruct_ex_conjs H0; subst.
+      split; (exists (f x1); split; [ assumption | ]; split; [ | assumption ];
+              eexists; split; [ reflexivity | split; assumption ]).
+    - simpl in H. destruct_ex_conjs H.
+      split; [ assumption | ]. split; [ assumption | ].
+      apply separate_rewind. symmetry. apply separate_rewind. symmetry; assumption.
+  Qed.
+
+
   (** * Permission sets *)
 
   (** Perms = upwards-closed sets of permissions *)
@@ -1758,12 +1807,17 @@ Section Permissions.
     etransitivity; eassumption.
   Qed.
 
-  (* singleton_Perms preserves ordering *)
-  Global Instance Proper_singleton_Perms :
-    Proper (lte_perm --> Basics.flip lte_Perms) singleton_Perms.
+  (* singleton_Perms preserves ordering, for rewriting *)
+  Lemma lte_singleton_Perms p q :
+    p <= q -> singleton_Perms p ⊑ singleton_Perms q.
   Proof.
     repeat intro. simpl in H0. simpl. etransitivity; eassumption.
   Qed.
+
+  (* singleton_Perms preserves ordering, for rewriting *)
+  Global Instance Proper_singleton_Perms :
+    Proper (lte_perm --> Basics.flip lte_Perms) singleton_Perms.
+  Proof. repeat intro; eapply lte_singleton_Perms; eassumption. Qed.
 
 
   (* The complete join / least upper bound of a set of permission sets = the
@@ -1982,7 +2036,6 @@ Section Permissions.
       apply H; assumption.
   Qed.
 
-
   (* Mapping a mkPerms set with a monotonic function yields what you would
   expect *)
   Lemma map_mkPerms f Ps `{Proper _ (lte_perm ==> lte_perm) f} :
@@ -2000,6 +2053,46 @@ Section Permissions.
       + etransitivity; [ | eassumption ].
         apply H; assumption.
   Qed.
+
+
+  (* Map a binary function over two permission sets to build a new one *)
+  Definition mapPerms2 (f : perm -> perm -> perm) P Q : Perms :=
+    mkPerms (fun r => exists p q, p ∈ P /\ q ∈ Q /\ r = f p q).
+
+  (* We could equivalently have defined mapPerms2 as a meet *)
+  Lemma mapPerms2_as_meet f P Q :
+    mapPerms2 f P Q ≡
+      meet_Perms (fun R => exists p q, p ∈ P /\ q ∈ Q /\ R = singleton_Perms (f p q)).
+  Proof.
+    unfold mapPerms2. rewrite mkPerms_meet.
+    split; apply meet_Perms_max;
+      intros R H; destruct_ex_conjs H; subst; apply lte_meet_Perms.
+    - eexists. split; [ | reflexivity ].
+      eexists; split; [ reflexivity | ].
+      eexists; eexists; split; [ eassumption | split; [ eassumption | reflexivity ]].
+    - eexists. split; [ | reflexivity ].
+      eexists; eexists; split; [ eassumption | split; [ eassumption | reflexivity ]].
+  Qed.
+
+  Global Instance Proper_eq_Perms_mapPerms2 f :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (mapPerms2 f).
+  Proof.
+    intros P1 P2 eqP Q1 Q2 eqQ.
+    repeat rewrite mapPerms2_as_meet.
+    split; apply meet_Perms_max; intros; apply lte_meet_Perms; eexists;
+      [ setoid_rewrite eqP; setoid_rewrite eqQ
+      | setoid_rewrite <- eqP; setoid_rewrite <- eqQ ];
+      (split; [ eassumption | reflexivity ]).
+  Qed.
+
+  (* f p q is in mapPerms2 f P Q if p in P and q in Q *)
+  Lemma in_mapPerms2 f P Q p q : p ∈ P -> q ∈ Q -> f p q ∈ mapPerms2 f P Q.
+  Proof.
+    intros. exists (f p q). split; [ | reflexivity ].
+    exists p; exists q. split; [ assumption | ].
+    split; [ assumption | reflexivity ].
+  Qed.
+
 
   (* The set of all add_pre_perm pred p permissions for p in P *)
   Definition add_pre pred P : Perms :=
@@ -2052,25 +2145,66 @@ Section Permissions.
   Qed.
 
 
-  (* The set of all rewind perms whose perms are in their respective sets *)
-  Definition rewind f P Q : Perms :=
-    mkPerms (fun r => exists p q, p ∈ P /\ q ∈ Q /\ r = rewind_perm f p q).
+  (* A rewind permission that had the same p before and after f was applied *)
+  Definition rewind_same_perm (f : config -> config) p := rewind_perm f p p.
+
+  (* The set of all permissions rewind_perm f p p for p in P *)
+  Definition rewind f P : Perms := mapPerms (rewind_same_perm f) P.
 
   (* rewind is monotonic wrt the permission set ordering *)
   Global Instance Proper_lte_rewind f :
-    Proper (lte_Perms ==> lte_Perms ==> lte_Perms) (rewind f).
+    Proper (lte_Perms ==> lte_Perms) (rewind f).
   Proof.
-    repeat intro.
-    destruct H1 as [pq [[p' [q [? [? ?]]]] ?]]; subst.
-    eexists; split; [ exists p'; exists q; split; [ | split ] | ]; eauto.
+    repeat intro. simpl in H0; destruct_ex_conjs H0; subst.
+    eexists; split; [ | apply H2 ]. eexists; split; [ | reflexivity ].
+    apply H; assumption.
   Qed.
 
   (* rewind is Proper wrt permission set equality *)
   Global Instance Proper_eq_rewind f :
-    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (rewind f).
+    Proper (eq_Perms ==> eq_Perms) (rewind f).
   Proof.
-    intros P1 P2 [? ?] Q1 Q2 [? ?]; split; apply Proper_lte_rewind; assumption.
+    intros P1 P2 [? ?]; split; apply Proper_lte_rewind; assumption.
   Qed.
+
+
+  (* The set of perms rewind_perm f (p**q) q for p in P, q in Q, and p ⊥ q *)
+  Definition rewind_conj f P Q : Perms :=
+    mkPerms (fun r => exists p q,
+                 p ∈ P /\ q ∈ Q /\ p ⊥ q /\ r = rewind_perm f (p ** q) q).
+
+  (* rewind_conj is monotonic wrt the permission set ordering *)
+  Global Instance Proper_lte_rewind_conj f :
+    Proper (lte_Perms ==> lte_Perms ==> lte_Perms) (rewind_conj f).
+  Proof.
+    intros P1 P2 lteP Q1 Q2 lteQ p H. simpl in H; destruct_ex_conjs H; subst.
+    eexists. split; [ | apply H1 ]. eexists; eexists.
+    split; [ apply lteP; eassumption | ].
+    split; [ apply lteQ; eassumption | ].
+    split; [ assumption | reflexivity ].
+  Qed.
+
+  (* rewind_conj is monotonic wrt permission set equality *)
+  Global Instance Proper_eq_rewind_conj f :
+    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (rewind_conj f).
+  Proof.
+    intros P1 P2 [? ?] Q1 Q2 [? ?].
+    split; apply Proper_lte_rewind_conj; assumption.
+  Qed.
+
+  (* rewind_conj f P Q is greater than Q when f is in the guarantee of P *)
+  Lemma rewind_conj_gte_Q f P Q :
+    (forall p x, p ∈ P -> inv p x -> pre p x -> guar p x (f x)) ->
+    rewind_conj f P Q ⊒ Q.
+  Proof.
+    repeat intro. simpl in H0; destruct_ex_conjs H0; subst.
+    eapply Perms_upwards_closed; [ eassumption | ].
+    etransitivity; [ | apply H2 ].
+    apply rewind_conj_sep_gte; [ | assumption ].
+    intros. destruct H4 as [? [? ?]]. destruct H5.
+    apply H; assumption.
+  Qed.
+
 
   (* The permission set built from removing the guarantees of perms in P *)
   Definition no_guar_Perms P : Perms := mapPerms no_guar P.
@@ -2256,45 +2390,52 @@ Section Permissions.
       apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
-  (* The rewind of two singletons is a singleton of their rewind *)
-  Lemma rewind_singleton f p q :
-    rewind f (singleton_Perms p) (singleton_Perms q)
-      ≡ singleton_Perms (rewind_perm f p q).
+  (* The rewind of a singleton is a singleton of its rewind *)
+  Lemma rewind_singleton f p :
+    rewind f (singleton_Perms p) ≡ singleton_Perms (rewind_perm f p p).
+  Proof.
+    apply (map_singleton_Perms (fun _ => _)).
+    repeat intro. apply Proper_lte_rewind_perm; assumption.
+  Qed.
+
+  (* The rewind_conj of singletons is a singleton of a rewind_perm *)
+  Lemma rewind_conj_singleton f p q :
+    p ⊥ q ->
+    rewind_conj f (singleton_Perms p) (singleton_Perms q)
+      ≡ singleton_Perms (rewind_perm f (p ** q) q).
   Proof.
     split; repeat intro.
-    - simpl in H. eexists; split; [ | apply H ].
-      exists p; exists q. simpl.
-      split; [ reflexivity | ]. split; reflexivity.
-    - simpl in H. destruct H as [? [[p' [q' [? [? ?]]]] ?]]; subst.
-      simpl. etransitivity; [ | eassumption ].
-      apply Proper_lte_rewind_perm; assumption.
+    - simpl in H0. eexists; split; [ | eassumption ].
+      exists p; exists q. simpl. repeat (split; [ reflexivity | ]).
+      split; [ assumption | reflexivity ].
+    - simpl in H0. destruct_ex_conjs H0; subst. simpl.
+      etransitivity; [ | eassumption ].
+      apply Proper_lte_rewind_perm; [ | assumption ].
+      apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
-  (* A rewind can be distributed over a conjunction *)
-  Lemma rewind_conj f P Q1 Q2 :
-    rewind f P (Q1 * Q2) ⊒ rewind f P Q1 * rewind f P Q2.
+  (* Distribute a rewind of P * Q when P allowed the update f *)
+  Lemma rewind_of_conj f P Q :
+    rewind f (P * Q) ⊒ rewind f P * rewind_conj f P Q.
   Proof.
-    intros rew_pq [rew_pq' [[p [q [? [[q1 [q2 [? [? [? ?]]]]] ?]]]] ?]]; subst.
-    exists (rewind_perm f p q1); exists (rewind_perm f p q2).
-    split; [ | split; [ | split ]].
-    - eexists; split; [ | reflexivity ]. exists p; exists q1.
-      split; [ assumption | ]. split; [ assumption | ]. reflexivity.
-    - eexists; split; [ | reflexivity ]. exists p; exists q2.
-      split; [ assumption | ]. split; [ assumption | ]. reflexivity.
-    - etransitivity; [ | eassumption ].
-      etransitivity; [ apply set_pre_perm_conj | ].
-      apply Proper_lte_rewind_perm; [ reflexivity | eassumption ].
-    - apply separate_set_pre. symmetry; apply separate_set_pre. symmetry; assumption.
-  Qed.
-
-  (* If we have a rewind with the same conjunction on the left and right, we can
-     turn it into two rewinds of each element of the conjunction *)
-  Lemma rewind_same_conj f P Q :
-    rewind f (P * Q) (P * Q) ⊒ rewind f P P * rewind f Q Q.
-  Proof.
-    etransitivity; [ apply rewind_conj | ].
-    apply sep_conj_Perms_monotone; apply Proper_lte_rewind; try reflexivity;
-      [ apply lte_l_sep_conj_Perms | apply lte_r_sep_conj_Perms ].
+    unfold rewind. rewrite mapPerms_as_meet.
+    apply meet_Perms_max; intros R H. destruct_ex_conjs H; subst.
+    simpl in H. destruct_ex_conjs H; subst.
+    intros p p_in.
+    apply (Perms_upwards_closed _ (rewind_perm f x0 x0 ** rewind_perm f (x0 ** x1) x1)).
+    - eexists. eexists. split; [ | split; [ | split; [ reflexivity | ]]].
+      + eexists; split; [ | reflexivity ]. eexists; split; [ eassumption | reflexivity ].
+      + eexists; split; [ | reflexivity ].
+        eexists; eexists. repeat (split; [ eassumption | ]). reflexivity.
+      + apply separate_rewind. symmetry. apply separate_rewind. symmetry. assumption.
+    - etransitivity; [ | apply p_in ].
+      transitivity (rewind_perm f (x0 ** x1) (x0 ** x1));
+        [ | apply Proper_lte_rewind_perm; assumption ].
+      etransitivity; [ | apply rewind_perm_conj ].
+      apply sep_conj_perm_monotone_sep.
+      + repeat (apply separate_rewind; symmetry). assumption.
+      + apply Proper_lte_rewind_perm; [ apply lte_l_sep_conj_perm | reflexivity ].
+      + reflexivity.
   Qed.
 
 

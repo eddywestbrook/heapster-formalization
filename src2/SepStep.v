@@ -287,35 +287,59 @@ Section step.
   Admitted.
    *)
 
-  (* A rewind permission that had the same p before and after f was applied *)
-  Definition rewind_same_perm (f : config -> config) p := rewind_perm f p p.
+  (* FIXME: docs *)
+  Lemma mono_ent_rewind_conj_perm f p q r :
+    (forall x, inv (p**q) x -> pre (p**q) x -> rely q x (f x)) ->
+    q ⊢ r -> rewind_perm f (p ** q) q ⊢ rewind_perm f (p ** r) r.
+  Proof.
+    intros. apply sep_step_entails_perm; [ apply sep_step_rg | ]; intros.
+    - apply (entails_inv _ _ H0). assumption.
+    - apply (sep_step_guar q r); [ apply entails_perm_sep_step | | ]; assumption.
+    - apply (sep_step_rely q r); [ apply entails_perm_sep_step | | ]; assumption.
+    - destruct H1.
+      assert (pre q x).
+      1: { eapply pre_inc; try eassumption.
+           apply rewind_conj_rely_gte; apply H. }
+      assert (inv r x /\ pre r x) as [? ?];
+        [ eapply entails_pred; [ | split ]; eassumption | ].
+      split; [ assumption | ].
+      simpl in H2; destruct_ex_conjs H2; subst.
+      assert (inv r x1 /\ pre r x1) as [? ?];
+        [ eapply entails_pred; [ eassumption | split; assumption ] | ].
+      assert (rely q x1 (f x1)); [ apply H; repeat (split; try assumption) | ].
+      assert (rely r x1 (f x1));
+        [ eapply sep_step_rely; try apply entails_perm_sep_step; eassumption | ].
+      assert (inv r (f x1) /\ pre r (f x1)) as [? ?];
+        [ split; [ eapply inv_rely | eapply pre_respects ]; eassumption | ].
+      assert (rely r (f x1) x);
+        [ eapply sep_step_rely; try apply entails_perm_sep_step; eassumption | ].
+      exists (f x1). split; [ assumption | ]. split; [ | assumption ].
+      eexists; split; [ reflexivity | ].
+      split; [ | split; assumption ].
+      split; [ assumption | ]. split; [ assumption | ].
+      symmetry; eapply entails_sep; [ | symmetry ]; eassumption.
+  Qed.
+
 
   (* rewind_same_perm f is monotone wrt p |- q if f is in the rely of q *)
+  (* FIXME: there should be a simpler proof using rewind_self_gte *)
   Lemma mono_ent_rewind_same_perm f p q :
-    (forall x, rely q x (f x)) ->
+    (forall x, inv p x -> pre p x -> rely p x (f x)) ->
     p ⊢ q -> rewind_same_perm f p ⊢ rewind_same_perm f q.
   Proof.
-    repeat intro. apply sep_step_entails_perm; [ apply sep_step_rg | ]; intros.
-    - apply (entails_inv _ _ H0). assumption.
-    - apply (sep_step_guar p q); [ apply entails_perm_sep_step | | ]; assumption.
-    - apply (sep_step_rely p q); [ apply entails_perm_sep_step | | ]; assumption.
-    - simpl in H1. destruct_ex_conjs H1; subst.
-      assert (inv q x1 /\ pre q x1) as [? ?];
-        [ eapply entails_pred; [ eassumption | split; assumption ] | ].
-      pose (H x1).
-      assert (inv q (f x1) /\ pre q (f x1)) as [? ?];
-        [ split; [ eapply inv_rely | eapply pre_respects ]; eassumption | ].
-      assert (rely q (f x1) x);
-        [ eapply sep_step_rely; try apply entails_perm_sep_step; eassumption | ].
-      assert (inv q x /\ pre q x) as [? ?];
-        [ split; [ eapply inv_rely | eapply pre_respects ]; eassumption | ].
-      split; [ assumption | ].
-      exists (f x1). split; [ assumption | ]. split; [ | assumption ].
-      eexists; split; [ reflexivity | split; assumption ].
+    intros. unfold rewind_same_perm.
+    transitivity (rewind_perm f (bottom_perm ** p) p);
+      [ rewrite sep_conj_perm_commut; rewrite sep_conj_perm_bottom; reflexivity | ].
+    transitivity (rewind_perm f (bottom_perm ** q) q);
+      [ | rewrite sep_conj_perm_commut; rewrite sep_conj_perm_bottom; reflexivity ].
+    apply mono_ent_rewind_conj_perm; [ | assumption ].
+    intros. destruct H1 as [? [? ?]]. destruct H2.
+    apply H; assumption.
   Qed.
 
 
   (* A stronger version of the above (FIXME: better docs) *)
+  (* FIXME: might not need this any more...? *)
   Lemma mono_ent_conj_rewind_same_perm f p q r :
     (forall x, rely p x (f x)) -> p ⊥ r ->
     p ⊢ q -> rewind_same_perm f (p ** r) ⊢ rewind_same_perm f (q ** r).
@@ -540,41 +564,46 @@ Section step.
       intros. destruct H5; assumption.
   Qed.
 
-  (*
-  Lemma add_poss_pre_meet_ent (pred : config -> Prop) (Ps : Perms -> Prop) Q :
-    (forall p P x, Ps P -> p ∈ P -> pre p x -> inv p x -> pred x ->
-                   add_pre pred (singleton_Perms p) ⊨ Q) ->
-    add_poss_pre pred (meet_Perms Ps) ⊨ Q.
+  (* FIXME: rewind is only Proper wrt entailment on permissions that contain f
+     in their rely, so we can use mono_ent_rewind_same_perm
+
+  Lemma Proper_ent_rewind f :
+    Proper (entails_Perms ==> entails_Perms) (rewind f).
   Proof.
-    intro H. apply add_poss_pre_ent. intros.
-    simpl in H0; destruct_ex_conjs H0; subst.
-    rewrite <- H5.
-    
+    intros P Q ent. unfold rewind; repeat rewrite mapPerms_as_meet.
+    apply meet_Perms_max_ent; intros. destruct_ex_conjs H; subst.
+    destruct (ent x H) as [q [? ?]].
+    apply ent_meet_Perms. eexists.
+    split; [ eexists; split; [ eassumption | reflexivity ] | ].
+    apply entails_singleton_Perms.
 
-    apply H.
+    repeat intro. simpl in H0. destruct_ex_conjs H0; subst.
 
-    unfold add_poss_pre. intro H. rewrite mkPerms_meet.
-  *)
+    destruct (H p)
+   *)
 
-  (* NOTE: rewind is not Proper wrt entailment because rewind_perm is not
-  Global Instance Proper_ent_rewind f :
-    Proper (entails_Perms ==> entails_Perms ==> entails_Perms) (rewind f).
+  (* rewind_conj f P is monotone wrt entailment when f is in the guar of P *)
+  Lemma mono_ent_rewind_conj f P Q R :
+    (forall p x, p ∈ P -> inv p x -> pre p x -> guar p x (f x)) ->
+    Q ⊨ R -> rewind_conj f P Q ⊨ rewind_conj f P R.
   Proof.
-    repeat intro. simpl in H1. destruct_ex_conjs H1; subst.
-    destruct (H _ H2) as [py [? ?]].
-    destruct (H0 _ H1) as [py0 [? ?]].
-    exists (invperm (inv p) ** rewind_perm f py py0).
-    split.
-    - eexists. split;
-        [ exists py; exists py0; split_conjs; try assumption; reflexivity | ].
-      apply lte_r_sep_conj_perm.
+    repeat intro. simpl in H1; destruct_ex_conjs H1; subst.
+    destruct (H0 x1 H1) as [r [? ?]].
+    exists (invperm (inv p) ** rewind_perm f (x0 ** r) r). split.
+    - eapply Perms_upwards_closed; [ | apply lte_r_sep_conj_perm ].
+      eexists; split; [ | reflexivity ].
+      eexists; eexists. repeat (split; [ eassumption | ]).
+      split; [ | reflexivity ].
+      symmetry; eapply entails_sep; try symmetry; eassumption.
     - etransitivity; [ apply bigger_perm_entails_inv; eassumption | ].
       apply monotone_entails_sep_conj_perm.
       + apply separate_bigger_invperm; assumption.
       + reflexivity.
-      + apply Proper_ent_rewind_perm; assumption.
+      + apply mono_ent_rewind_conj_perm; [ | assumption ].
+        intros x [? [? ?]] [? ?]. eapply sep_r; try eassumption.
+        apply H; assumption.
   Qed.
-   *)
+
 
 End step.
 

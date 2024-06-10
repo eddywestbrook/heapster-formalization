@@ -316,7 +316,7 @@ Section bisim.
   of its guarantees with output permission set rewind f P P *)
   Lemma typing_update_L f P :
     (forall p c12, p ∈ P -> inv p c12 -> pre p c12 -> guar p c12 (map_pair_L f c12)) ->
-    typing P (fun _ _ => rewind (map_pair_L f) P P) (update f) (Ret tt).
+    typing P (fun _ _ => rewind (map_pair_L f) P) (update f) (Ret tt).
   Proof.
     repeat intro; pstep. unfold update, trigger. rewritebisim @bind_vis.
     apply (sbuter_gen_modify_L _ _ _ _ _ _ _ _ (rewind_perm (map_pair_L f) p p));
@@ -331,8 +331,7 @@ Section bisim.
       split; assumption.
     - eapply inv_guar; [ apply (H p (c1,c2)) | ]; assumption.
     - eexists; split; [ | reflexivity ].
-      exists p; exists p.
-      split; [ assumption | split; [ assumption | reflexivity ]].
+      exists p. split; [ assumption | reflexivity ].
   Qed.
 
   Lemma sbuter_bind {R1 R2 S1 S2} (p : perm) (Q : R1 -> S1 -> Perms) (R : R2 -> S2 -> Perms)

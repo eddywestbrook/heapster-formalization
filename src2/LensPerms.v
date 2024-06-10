@@ -212,8 +212,7 @@ Section PLensPerms.
   that if you have write_dep perms to ix then putting elem to ix results in a
   write_dep permission whose contents equal elem *)
   Lemma ixplens_write_ent ix P elem :
-    rewind (fun x => iput ix x elem)
-      (ixplens_write_dep ix P) (ixplens_write_dep ix P)
+    rewind (fun x => iput ix x elem) (ixplens_write_dep ix P)
       ⊨ ixplens_write_dep ix (fun e => prop_Perms (e = elem)).
   Proof.
     apply bigger_Perms_entails. repeat intro.
@@ -226,16 +225,16 @@ Section PLensPerms.
     constructor; intros.
     - simpl in H0. destruct_ex_conjs H0; subst.
       exists elem. split; [ | reflexivity ].
-      transitivity (iget ix (iput ix x4 elem)); [ | apply iGetPut_eq ].
-      symmetry. eapply (rely_inc (ixplens_write_perm_eq ix x5) x1); try assumption.
-      + rewrite <- lte_l_sep_conj_Perms in H5. apply H5.
+      transitivity (iget ix (iput ix x3 elem)); [ | apply iGetPut_eq ].
+      symmetry. eapply (rely_inc (ixplens_write_perm_eq ix x2) x0); try assumption.
+      + rewrite <- lte_l_sep_conj_Perms in H3. apply H3.
       + rewrite iGetPut_eq. eapply Some_not_None; reflexivity.
-    - rewrite <- lte_l_sep_conj_Perms in H5.
-      apply (rely_inc (ixplens_write_perm_eq ix x5) x1); assumption.
-    - rewrite <- lte_l_sep_conj_Perms in H5.
-      apply (guar_inc (ixplens_write_perm_eq ix x5) x1); assumption.
-    - rewrite <- lte_l_sep_conj_Perms in H5.
-      apply (inv_inc (ixplens_write_perm_eq ix x5) x1); assumption.
+    - rewrite <- lte_l_sep_conj_Perms in H3.
+      apply (rely_inc (ixplens_write_perm_eq ix x2) x0); assumption.
+    - rewrite <- lte_l_sep_conj_Perms in H3.
+      apply (guar_inc (ixplens_write_perm_eq ix x2) x0); assumption.
+    - rewrite <- lte_l_sep_conj_Perms in H3.
+      apply (inv_inc (ixplens_write_perm_eq ix x2) x0); assumption.
   Qed.
 
 
