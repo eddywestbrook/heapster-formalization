@@ -425,11 +425,13 @@ Section Permissions.
       inv := phi;
     |}.
 
-  (* A stronger predicate gives a stronger invperm *)
-  Lemma lte_invperm (pred1 pred2 : config -> Prop) :
-    (forall x, pred1 x -> pred2 x) -> invperm pred2 <= invperm pred1.
+  (* An invperm is less than or equal to any p with a stronger invariant *)
+  Lemma lte_invperm (pred : config -> Prop) p :
+    (forall x, inv p x -> pred x) -> invperm pred <= p.
   Proof.
     constructor; simpl; intros; auto.
+    - apply H; eapply inv_rely; eassumption.
+    - subst. reflexivity.
   Qed.
 
   (* An equivalent predicate gives an equal invperm *)
@@ -1018,6 +1020,10 @@ Section Permissions.
       rewrite (H x y) in H2; inversion H2; reflexivity.
   Qed.
 
+  (* All invperms are self-separate *)
+  Lemma self_sep_invperm pred : invperm pred ⊥ invperm pred.
+  Proof. apply self_sep_trivial_guar. simpl. intros ? ?; reflexivity. Qed.
+
   (* A permission is always separate from a larger one's invperm *)
   Lemma separate_bigger_invperm p q : p <= q -> invperm (inv q) ⊥ p.
   Proof.
@@ -1168,6 +1174,20 @@ Section Permissions.
   Proof.
     intros. rewrite sep_conj_perm_commut.
     apply lte_l_sep_conj_perm.
+  Qed.
+
+  (* p ** q is the least upper bound of p and q when they are separate *)
+  Lemma sep_conj_perm_lte p q r : p ⊥ q -> p <= r -> q <= r -> p ** q <= r.
+  Proof.
+    constructor; intros.
+    - split; [ apply H0 | apply H1 ]; assumption.
+    - split; [ apply H0 | apply H1 ]; assumption.
+    - simpl in H3. induction H3.
+      + destruct H3; [ apply H0 | apply H1 ]; assumption.
+      + assert (guar r x y); [ apply IHclos_trans1; assumption | ].
+        etransitivity; [ eassumption | ].
+        apply IHclos_trans2. eapply inv_guar; eassumption.
+    - split; [ apply H0 | split; [ apply H1 | ] ]; assumption.
   Qed.
 
   Lemma sep_conj_invperm_conj pred1 pred2 :
@@ -1741,6 +1761,12 @@ Section Permissions.
     repeat intro. apply H. eapply Perms_upwards_closed; eassumption.
   Qed.
 
+  Global Instance Proper_gte_in_Perms :
+    Proper (gte_Perms ==> gte_perm --> Basics.impl) in_Perms.
+  Proof.
+    repeat intro. apply H. eapply Perms_upwards_closed; eassumption.
+  Qed.
+
 
   (* Permission set equality *)
   Definition eq_Perms (P Q : Perms) : Prop := P ⊑ Q /\ Q ⊑ P.
@@ -2173,15 +2199,21 @@ Section Permissions.
     mkPerms (fun r => exists p q,
                  p ∈ P /\ q ∈ Q /\ p ⊥ q /\ r = rewind_perm f (p ** q) q).
 
+  (* Helper lemma to prove a rewind_perm is in rewind_conj *)
+  Lemma rewind_conj_elem f P Q p q :
+    p ∈ P -> q ∈ Q -> p ⊥ q -> rewind_perm f (p ** q) q ∈ rewind_conj f P Q.
+  Proof.
+    intros. eexists; split; [ | reflexivity ].
+    exists p; exists q. repeat (split; [ assumption | ]). reflexivity.
+  Qed.
+
   (* rewind_conj is monotonic wrt the permission set ordering *)
   Global Instance Proper_lte_rewind_conj f :
     Proper (lte_Perms ==> lte_Perms ==> lte_Perms) (rewind_conj f).
   Proof.
     intros P1 P2 lteP Q1 Q2 lteQ p H. simpl in H; destruct_ex_conjs H; subst.
-    eexists. split; [ | apply H1 ]. eexists; eexists.
-    split; [ apply lteP; eassumption | ].
-    split; [ apply lteQ; eassumption | ].
-    split; [ assumption | reflexivity ].
+    eapply Perms_upwards_closed; [ | eassumption ].
+    apply rewind_conj_elem; [ apply lteP | apply lteQ | ]; assumption.
   Qed.
 
   (* rewind_conj is monotonic wrt permission set equality *)
@@ -2364,6 +2396,22 @@ Section Permissions.
         simpl. exists x, x0. split; [auto | split; [auto | ]]. split; auto. reflexivity.
   Qed.
 
+  (* The conjunction of two meets is another meet *)
+  Lemma sep_conj_Perms_meet2 (Ps Qs : Perms -> Prop) :
+    meet_Perms Ps * meet_Perms Qs
+      ≡ meet_Perms (fun R => exists P Q, R = P * Q /\ Ps P /\ Qs Q).
+  Proof.
+    split; repeat intro.
+    - simpl in H; destruct_ex_conjs H; subst.
+      simpl in H1; destruct_ex_conjs H1; subst.
+      eexists; eexists.
+      split; [ eexists; split; eassumption | ].
+      split; [ eexists; split; eassumption | ]. split; assumption.
+    - simpl in H; destruct_ex_conjs H; subst.
+      eexists; split; [ eexists; eexists; split; [ reflexivity | ];
+                        split; eassumption | ].
+      eexists; eexists. repeat (split; try eassumption).
+  Qed.
 
   (* The conjunction of a binary join is an upper bound on conjunctions with the
   Perms sets being joined *)
@@ -2436,6 +2484,61 @@ Section Permissions.
       + repeat (apply separate_rewind; symmetry). assumption.
       + apply Proper_lte_rewind_perm; [ apply lte_l_sep_conj_perm | reflexivity ].
       + reflexivity.
+  Qed.
+
+  (* Distribute a rewind_conj over a separating conjunction *)
+  Lemma rewind_conj_of_conj f P Q R :
+    rewind_conj f P (Q * R) ⊒ rewind_conj f P Q * rewind_conj f P R.
+  Proof.
+    repeat intro. simpl in H; destruct_ex_conjs H; subst.
+    rewrite <- H1.
+    assert (x2 <= x1); [ etransitivity; [ apply lte_l_sep_conj_perm | eassumption ] | ].
+    assert (x3 <= x1); [ etransitivity; [ apply lte_r_sep_conj_perm | eassumption ] | ].
+    assert (invperm (inv x1) ** x2 ⊥ invperm (inv x1) ** x3).
+    1: { rewrite sep_conj_perm_commut. apply separate_conj_assoc.
+         - rewrite sep_conj_perm_assoc;
+             [ | apply self_sep_invperm | apply separate_bigger_invperm; assumption ].
+           rewrite <- invperm_dup.
+           symmetry; apply separate_conj_assoc; [ | symmetry; assumption ].
+           apply separate_bigger_invperm; rewrite sep_conj_perm_commut; assumption.
+         - symmetry; rewrite sep_conj_perm_commut; apply separate_conj_assoc;
+             [ | apply self_sep_invperm ].
+           rewrite <- invperm_dup. symmetry; apply separate_bigger_invperm; assumption. }
+    assert ((invperm (inv x1) ** x2) ** (invperm (inv x1) ** x3) <= x1).
+    1: { apply sep_conj_perm_lte; try assumption;
+         apply sep_conj_perm_lte; try assumption;
+         try (apply lte_invperm; intros; assumption);
+         apply separate_bigger_invperm; assumption. }
+    assert (x0 ** (invperm (inv x1) ** (x2 ** x3)) <= x0 ** x1);
+      [ apply sep_conj_perm_monotone_r; assumption | ].
+    assert (x0 ⊥ invperm (inv x1) ** x2);
+      [ apply separate_antimonotone; assumption | ].
+    assert (x0 ⊥ invperm (inv x1) ** x3);
+      [ apply separate_antimonotone; assumption | ].
+    rewrite <- (Proper_lte_rewind_perm f _ _ H10 _ _ H9).
+    rewrite rewind_perm_conj.
+    exists (rewind_perm f (x0 ** (invperm (inv x1) ** x2)) (invperm (inv x1) ** x2)).
+    exists (rewind_perm f (x0 ** (invperm (inv x1) ** x3)) (invperm (inv x1) ** x3)).
+    split; [ | split; [ | split ]].
+    - eexists. split; [ | reflexivity ]. exists x0. exists (invperm (inv x1) ** x2).
+      split; [ assumption | ]. split; [ rewrite <- lte_r_sep_conj_perm; assumption | ].
+      split; [ assumption | reflexivity ].
+    - eexists. split; [ | reflexivity ]. exists x0. exists (invperm (inv x1) ** x3).
+      split; [ assumption | ]. split; [ rewrite <- lte_r_sep_conj_perm; assumption | ].
+      split; [ assumption | reflexivity ].
+    - apply sep_conj_perm_monotone_sep.
+      + apply separate_rewind. symmetry; apply separate_rewind. symmetry. assumption.
+      + apply Proper_lte_rewind_perm; [ | reflexivity ].
+        apply sep_conj_perm_monotone_sep; [ assumption | reflexivity | ].
+        apply sep_conj_perm_monotone_sep;
+          [ apply separate_bigger_invperm; assumption | reflexivity | ].
+        apply lte_l_sep_conj_perm.
+      + apply Proper_lte_rewind_perm; [ | reflexivity ].
+        apply sep_conj_perm_monotone_sep; [ assumption | reflexivity | ].
+        apply sep_conj_perm_monotone_sep;
+          [ apply separate_bigger_invperm; assumption | reflexivity | ].
+        apply lte_r_sep_conj_perm.
+    - apply separate_rewind. symmetry; apply separate_rewind. symmetry. assumption.
   Qed.
 
 

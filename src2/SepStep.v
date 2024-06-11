@@ -455,6 +455,14 @@ Section step.
       apply monotone_entails_sep_conj_perm; assumption.
   Qed.
 
+  (* Monotonicity of sep_conj_Perms wrt entailment as a Proper instance *)
+  Global Instance Proper_ent_sep_conj_Perms :
+    Proper (entails_Perms ==> entails_Perms ==> entails_Perms) sep_conj_Perms.
+  Proof.
+    intros P1 P2 entP Q1 Q2 entQ.
+    apply monotone_entails_sep_conj; assumption.
+  Qed.
+
 
   (* Meet is a lower bound wrt entailment for all its elements *)
   Lemma ent_meet_Perms : forall (Ps : Perms -> Prop) P,
