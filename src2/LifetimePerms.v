@@ -812,7 +812,8 @@ Section LifetimeRules.
 
   (* lowned is the conjunction of an lowned permission plus a permission R such
   that ending the lifetime while holding P plus R yields Q *)
-  Definition lowned l ls {A} P Q := lowned_Perms l ls * rewind_lt_impl l A P Q.
+  Definition lowned l ls {A} (P Q : A -> Perms) :=
+    lowned_Perms l ls * rewind_lt_impl l A P Q.
 
   (* If we own two unequal lifetimes then we can subsume one inside the other *)
   Lemma lowned_subsume l1 ls1 A P1 Q1 l2 ls2 B P2 Q2 :
@@ -930,7 +931,7 @@ Section LifetimeRules.
 
   (* The rule to return part of the LHS permission of an lowned *)
   Lemma lowned_part_return l ls A (a:A) B P Q (R : A*B -> Perms) :
-    P a * lowned l ls (fun ab => P (fst ab) * Q (snd ab)) R ⊨ lowned l ls Q (fun b => R (a,b)).
+    P a * lowned l ls (P *1 Q) R ⊨ lowned l ls Q (fun b => R (a,b)).
   Proof.
     unfold lowned.
     rewrite sep_conj_Perms_assoc.
@@ -977,6 +978,7 @@ Section LifetimeRules.
     rewrite (H2 _). rewrite rewind_lt_gte_P.
     rewrite sep_conj_Perms_commut. apply H.
   Qed.
+
 
 (* End LifetimeRules. *)
 End LifetimePerms.
