@@ -1190,6 +1190,20 @@ Section Permissions.
     - split; [ apply H0 | split; [ apply H1 | ] ]; assumption.
   Qed.
 
+  (* If p is separate from both q and r then it is separate from q ** r *)
+  Lemma separate_sep_conj_perm p q r : p ⊥ q -> p ⊥ r -> p ⊥ q ** r.
+  Proof.
+    constructor; intros.
+    - induction H3.
+      + destruct H1 as [? [? ?]].
+        destruct H3; [ apply (sep_l _ _ H) | apply (sep_l _ _ H0) ]; assumption.
+      + assert (rely p x y); [ apply IHclos_trans1; assumption | ]. rewrite H3.
+        apply IHclos_trans2; [ eapply inv_guar | eapply inv_rely]; eassumption.
+    - destruct H2 as [? [? ?]].
+      split; [ apply (sep_r _ _ H) | apply (sep_r _ _ H0) ]; assumption.
+  Qed.
+
+  (* The conjunction of two invperms is the invperm of their conjunction *)
   Lemma sep_conj_invperm_conj pred1 pred2 :
     eq_perm (invperm pred1 ** invperm pred2) (invperm (fun x => pred1 x /\ pred2 x)).
   Proof.

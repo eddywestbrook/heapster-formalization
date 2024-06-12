@@ -639,6 +639,8 @@ Section LifetimePerms.
         right. split; [ reflexivity | ]. intros; elimtype False; assumption.
   Qed.
 
+  (* If we held both a when p and an after p before l was ended then we can
+     recover p *)
   Lemma lfinished_when_after_recover_perm l p :
     p ⊥ lowned_perm l (fun _ => False) ->
     lfinished_perm l **
@@ -647,7 +649,21 @@ Section LifetimePerms.
                      (when_perm l p ** after_perm l p)
     ⊢ lfinished_perm l ** p.
   Proof.
-  Admitted.
+    intro. etransitivity; [ | apply lfinished_after_recover_perm; assumption ].
+    apply monotone_entails_sep_conj_perm; [ | reflexivity | ].
+    - symmetry; apply sep_lowned_sep_lfinished. apply separate_rewind.
+      symmetry; apply separate_sep_conj_perm; symmetry;
+        [ apply separate_when_lowned | apply separate_after_lowned ]; assumption.
+    - apply bigger_perm_entails; [ apply Proper_lte_rewind_perm | ].
+      + apply sep_conj_perm_monotone_sep;
+          [ | reflexivity | apply lte_l_sep_conj_perm ].
+        symmetry; apply separate_when_lowned; assumption.
+      + apply lte_r_sep_conj_perm.
+      + simpl; intros x [? ?].
+        destruct (lifetime x l); [ | inversion H1 ].
+        repeat (split; [ split; [ assumption | trivial ] | ]).
+        apply separate_when_after.
+  Qed.
 
 
 (* End LifetimePerms. *)
