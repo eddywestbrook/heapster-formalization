@@ -1276,7 +1276,6 @@ Section Permissions.
 
   (** We can always weaken permissions and retain separateness, as long as we
       add the stronger invariant to the weaker permission *)
-
   Lemma separate_antimonotone p q r : p ⊥ q -> r <= q ->
                                       p ⊥ (invperm (inv q) ** r).
   Proof.
@@ -2738,6 +2737,30 @@ Section Permissions.
   (*   intros Hlte a p Hp. *)
   (*   eexists. split; eauto. *)
   (* Qed. *)
+
+
+  (* Lift a permission set to a unary permission set function on unit *)
+  Definition liftP1 P : unit -> Perms := fun _ => P.
+
+  (* The separating conjunction of unary permission set functions *)
+  Definition sep_conj_Perms1 {A B} (P : A -> Perms) (Q : B -> Perms) :=
+    fun ab => P (fst ab) * Q (snd ab).
+
+  Notation "P *1 Q" := (sep_conj_Perms1 P Q) (at level 40, left associativity).
+
+  (* Equality on unary permission set functions *)
+  Definition eq_Perms1 {A} (P Q : A -> Perms) := forall a, eq_Perms (P a) (Q a).
+  Notation "P ≡1 Q" := (eq_Perms1 P Q) (at level 60).
+
+  Global Instance Equivalence_eq_Perms1 A : Equivalence (@eq_Perms1 A).
+  Proof.
+    constructor; repeat intro.
+    - reflexivity.
+    - symmetry; apply H.
+    - etransitivity; [ apply H | apply H0 ].
+  Qed.
+
+
 End Permissions.
 
 (* begin hide *)
@@ -2751,9 +2774,13 @@ Notation "p ∈ P" := (in_Perms P p) (at level 60).
 Notation "P ⊑ Q" := (lte_Perms P Q) (at level 60).
 Notation "P ⊒ Q" := (gte_Perms P Q) (at level 60).
 Notation "P ≡ Q" := (eq_Perms P Q) (at level 60).
+Notation "P ≡1 Q" := (eq_Perms1 P Q) (at level 60).
 Notation "P * Q" := (sep_conj_Perms P Q).
+Notation "P *1 Q" := (sep_conj_Perms1 P Q) (at level 40, left associativity).
+(*
 Notation "P -⊑- Q" := (forall a, P a ⊑ Q a) (at level 60).
 Notation "P -≡- Q" := (P -⊑- Q /\ Q -⊑- P) (at level 60).
+*)
 
 Ltac respects := eapply pre_respects; eauto.
 

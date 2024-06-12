@@ -737,54 +737,71 @@ Section LifetimeRules.
     intros l1 l2 eql P1 P2 entP; apply Proper_ent_rewind_lt; try symmetry; eassumption.
   Qed.
 
-  (* The set of all permissions such that, if you held them and P before ending
-     lifetime l, you could recover Q afterwards *)
-  Definition rewind_lt_impl l P Q :=
-    meet_Perms (fun R => lfinished l * rewind_lt l (P * R) ⊨ Q).
+  (* The rewind_lt function can be dropped *)
+  Lemma rewind_lt_gte_P l P : rewind_lt l P ⊨ P.
+  Proof.
+    apply bigger_Perms_entails. apply rewind_conj_gte_Q.
+    intros. simpl in H. apply H; [ assumption | ].
+    right. split; [ reflexivity | intros; elimtype False; assumption ].
+  Qed.
+
+  (* The rewind_lt of a conjunction entails the conjunction of rewind_lts *)
+  Lemma rewind_lt_of_conj l P Q :
+    rewind_lt l (P * Q) ⊨ rewind_lt l P * rewind_lt l Q.
+  Proof.
+    apply bigger_Perms_entails. apply rewind_conj_of_conj.
+  Qed.
+
+  (* The set of all permissions such that, if you held them and some permissions
+     P a before ending lifetime l, you could recover Q a afterwards *)
+  Definition rewind_lt_impl l A (P Q : A -> Perms) :=
+    meet_Perms (fun R => forall a, lfinished l * rewind_lt l (P a * R) ⊨ Q a).
 
   (* rewind_lt_impl is Proper wrt permission set equality *)
-  Global Instance Proper_eq_rewind_lt_impl l :
-    Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (rewind_lt_impl l).
+  Global Instance Proper_eq_rewind_lt_impl l A :
+    Proper (pointwise_relation _ eq_Perms ==>
+              pointwise_relation _ eq_Perms ==> eq_Perms) (rewind_lt_impl l A).
   Proof.
     intros P1 P2 eqP Q1 Q2 eqQ; split; apply meet_Perms_max; intros;
-      apply lte_meet_Perms; eexists; (split; [ | reflexivity ]).
-    - rewrite eqP. rewrite eqQ. assumption.
-    - rewrite <- eqP. rewrite <- eqQ. assumption.
+      apply lte_meet_Perms; eexists; (split; [ | reflexivity ]); intros.
+    - rewrite eqP. rewrite eqQ. apply H.
+    - rewrite <- eqP. rewrite <- eqQ. apply H.
   Qed.
 
   (* P entails a rewind_lt_impl if it satisfies the rewind_lt_impl condition *)
-  Lemma rewind_lt_impl_lambda l P Q R :
-    lfinished l * rewind_lt l (Q * P) ⊨ R ->
-    P ⊨ rewind_lt_impl l Q R.
+  Lemma rewind_lt_impl_lambda l A P Q R :
+    (forall a, lfinished l * rewind_lt l (Q a * P) ⊨ R a) ->
+    P ⊨ rewind_lt_impl l A Q R.
   Proof.
     repeat intro.
     exists p. split; [ | reflexivity ]. exists P. split; assumption.
   Qed.
 
   (* A rewind_lt_impl can be "partially applied" *)
-  Lemma rewind_lt_impl_part_apply l P Q R :
-    P * rewind_lt_impl l (P * Q) R ⊨ rewind_lt_impl l Q R.
+  Lemma rewind_lt_impl_part_apply l A (a:A) B P Q (R : A*B -> Perms) :
+    P a * rewind_lt_impl l (A*B) (P *1 Q) R ⊨ rewind_lt_impl l B Q (fun b => R (a,b)).
   Proof.
-    rewrite (sep_conj_Perms_commut P Q).
-    rewrite (sep_conj_Perms_commut P (rewind_lt_impl l _ _)).
+    rewrite sep_conj_Perms_commut.
     unfold rewind_lt_impl.
     rewrite sep_conj_Perms_meet_commute.
     apply meet_Perms_max_ent; intros P0 [P' [? ?]]; subst.
     apply ent_meet_Perms.
-    eexists; split; [ | reflexivity ].
-    rewrite (sep_conj_Perms_commut P' P).
-    rewrite (sep_conj_Perms_assoc Q P). assumption.
+    eexists; split; [ intros | reflexivity ].
+    rewrite (sep_conj_Perms_commut P').
+    rewrite (sep_conj_Perms_assoc (Q a0)).
+    rewrite (sep_conj_Perms_commut (Q a0)).
+    apply (H0 (a,a0)).
   Qed.
 
 
   (* lowned is the conjunction of an lowned permission plus a permission R such
   that ending the lifetime while holding P plus R yields Q *)
-  Definition lowned l ls P Q := lowned_Perms l ls * rewind_lt_impl l P Q.
+  Definition lowned l ls {A} P Q := lowned_Perms l ls * rewind_lt_impl l A P Q.
 
   (* If we own two unequal lifetimes then we can subsume one inside the other *)
-  Lemma lowned_subsume l1 ls1 P1 Q1 l2 ls2 P2 Q2 :
+  Lemma lowned_subsume l1 ls1 A P1 Q1 l2 ls2 B P2 Q2 :
     l1 <> l2 ->
-    lowned l1 ls1 P1 Q1 * lowned l2 ls2 P2 Q2 ⊨
+    @lowned l1 ls1 A P1 Q1 * @lowned l2 ls2 B P2 Q2 ⊨
       lowned l1 (eq l2 \1/ ls1) P1 Q1 * lowned l2 ls2 P2 Q2.
   Proof.
     intro. unfold lowned.
@@ -857,11 +874,11 @@ Section LifetimeRules.
 
 
   (* The rule for splitting the lifetime of a singleton permission *)
-  Lemma lowned_split l ls p Q R :
+  Lemma lowned_split l ls p A Q R :
     p ⊥ lowned_perm l ls -> p ⊥ lowned_perm l (fun _ => False) ->
     singleton_Perms p * lowned l ls Q R
       ⊨ when l (singleton_Perms p)
-        * lowned l ls (when l (singleton_Perms p) * Q) (singleton_Perms p * R).
+        * lowned l ls (fun a:A => when l (singleton_Perms p) * Q a) (fun a => singleton_Perms p * R a).
   Proof.
     intros. unfold lowned.
     rewrite sep_conj_Perms_assoc.
@@ -880,7 +897,7 @@ Section LifetimeRules.
     apply meet_Perms_max_ent. intros P' [P [? ?]]; subst.
     apply ent_meet_Perms.
     exists (P * after l (singleton_Perms p)).
-    split; [ | reflexivity ].
+    split; [ intros | reflexivity ].
     rewrite (sep_conj_Perms_commut P (after l _)).
     rewrite sep_conj_Perms_distrib.
     (* FIXME: set up the right Proper instances to make this use rewriting *)
@@ -891,17 +908,17 @@ Section LifetimeRules.
     rewrite (sep_conj_Perms_distrib (lfinished l)).
     apply monotone_entails_sep_conj.
     - apply lfinished_after_recover_singleton; assumption.
-    - assumption.
+    - apply H2.
   Qed.
 
 
   (* The rule to return part of the LHS permission of an lowned *)
-  Lemma lowned_part_return l ls P Q R :
-    P * lowned l ls (P * Q) R ⊨ lowned l ls Q R.
+  Lemma lowned_part_return l ls A (a:A) B P Q (R : A*B -> Perms) :
+    P a * lowned l ls (fun ab => P (fst ab) * Q (snd ab)) R ⊨ lowned l ls Q (fun b => R (a,b)).
   Proof.
     unfold lowned.
     rewrite sep_conj_Perms_assoc.
-    rewrite (sep_conj_Perms_commut P).
+    rewrite (sep_conj_Perms_commut (P a)).
     rewrite <- sep_conj_Perms_assoc.
     apply monotone_entails_sep_conj; [ reflexivity | ].
     apply rewind_lt_impl_part_apply.
@@ -909,24 +926,41 @@ Section LifetimeRules.
 
 
   (* Apply an entailment to the LHS of an lowned permission set *)
-  Lemma lowned_ent_lhs l ls P Q1 Q2 R :
-    P * Q2 ⊨ Q1 -> P * lowned l ls Q1 R ⊨ lowned l ls Q2 R.
+  Lemma lowned_ent_lhs l ls A B (f : A -> B) P
+    (Q1 : B -> Perms) (Q2 : A -> Perms) (R : B -> Perms)
+    : (forall a, P * Q2 a ⊨ Q1 (f a)) ->
+      P * lowned l ls Q1 R ⊨ lowned l ls Q2 (fun a => R (f a)).
   Proof.
     intro. unfold lowned.
-    rewrite sep_conj_Perms_assoc.
     rewrite (sep_conj_Perms_commut P).
     rewrite <- sep_conj_Perms_assoc.
     apply monotone_entails_sep_conj; [ reflexivity | ].
-    unfold rewind_lt_impl.
-    rewrite sep_conj_Perms_commut. rewrite sep_conj_Perms_meet_commute.
+    unfold rewind_lt_impl. rewrite sep_conj_Perms_meet_commute.
     apply meet_Perms_max_ent; intros. destruct_ex_conjs H0; subst.
-    apply ent_meet_Perms. exists (x * P); split; [ | reflexivity ].
+    apply ent_meet_Perms. exists (x * P); split; [ intros | reflexivity ].
     rewrite (sep_conj_Perms_commut x).
-    rewrite (sep_conj_Perms_assoc Q2).
-    rewrite (sep_conj_Perms_commut Q2).
-    rewrite H. assumption.
+    rewrite (sep_conj_Perms_assoc (Q2 a)).
+    rewrite (sep_conj_Perms_commut (Q2 a)).
+    rewrite H. apply H2.
   Qed.
 
+  (* Apply an entailment to the RHS of an lowned permission set *)
+  Lemma lowned_ent_rhs l ls A P (Q R1 R2 : A -> Perms) :
+    (forall a, P * R1 a ⊨ R2 a) -> P * lowned l ls Q R1 ⊨ lowned l ls Q R2.
+  Proof.
+    intro. unfold lowned.
+    rewrite (sep_conj_Perms_commut P).
+    rewrite <- sep_conj_Perms_assoc.
+    apply monotone_entails_sep_conj; [ reflexivity | ].
+    unfold rewind_lt_impl. rewrite sep_conj_Perms_meet_commute.
+    apply meet_Perms_max_ent; intros. destruct_ex_conjs H0; subst.
+    apply ent_meet_Perms. exists (x * P); split; [ intros | reflexivity ].
+    rewrite (sep_conj_Perms_assoc (Q a)).
+    rewrite rewind_lt_of_conj.
+    rewrite sep_conj_Perms_assoc.
+    rewrite (H2 _). rewrite rewind_lt_gte_P.
+    rewrite sep_conj_Perms_commut. apply H.
+  Qed.
 
 (* End LifetimeRules. *)
 End LifetimePerms.
