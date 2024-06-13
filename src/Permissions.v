@@ -7,7 +7,7 @@ From Coq Require Import
   Relations.Operators_Properties.
 (* end hide *)
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils.
 
 (*** Helper lemmas for clos_trans ***)

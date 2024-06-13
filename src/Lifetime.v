@@ -9,7 +9,7 @@ From Coq Require Import
      Classes.Morphisms
      FSets.FMaps.
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils.
 
 From ITree Require Import

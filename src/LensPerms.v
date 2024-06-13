@@ -9,7 +9,7 @@ From Coq Require Import
      Logic.FunctionalExtensionality
      Lia.
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils
      Permissions
      Lifetime

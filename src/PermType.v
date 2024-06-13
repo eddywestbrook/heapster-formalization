@@ -11,7 +11,7 @@ From ExtLib Require Import
      Structures.Monads
      Data.Monads.OptionMonad.
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils
      Permissions
      (* PermissionsSpred2 *)

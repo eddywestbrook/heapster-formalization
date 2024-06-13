@@ -6,7 +6,7 @@ From Coq Require Import
      Lists.List
      Arith.PeanoNat.
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils
      Permissions
      Lifetime

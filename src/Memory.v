@@ -5,7 +5,7 @@ From Coq Require Import
      Lists.List
      Lia.
 
-From Heapster2 Require Import
+From Heapster Require Import
      Utils.
 
 From ITree Require Import

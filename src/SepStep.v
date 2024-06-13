@@ -1,5 +1,5 @@
 (* begin hide *)
-From Heapster2 Require Import
+From Heapster Require Import
   Utils
   Permissions.
 
