@@ -55,7 +55,7 @@ Qed.
 Lemma statusOf_lte_eq s1 s2 : statusOf_lte s1 s2 -> statusOf_lte s2 s1 -> s1 = s2.
 Proof.
   destruct s1 as [[ | ] | ]; destruct s2 as [[ | ] | ]; simpl; intros;
-    try reflexivity; elimtype False; assumption.
+    try reflexivity; exfalso; assumption.
 Qed.
 
 (* Finished is the greatest status *)
@@ -77,7 +77,7 @@ Proof.
   destruct s; [ destruct s | ]; intros.
   - eexists; reflexivity.
   - eexists; reflexivity.
-  - simpl in H. elimtype False; assumption.
+  - simpl in H. exfalso; assumption.
 Qed.
 
 
@@ -268,7 +268,7 @@ Definition subsumes n1 n2 x1 x2 :=
     generalize (@lget S (list status) _ st1). clear st1.
     intro l1; induction l1; intros l2 ?; [ | destruct l2 ].
     - apply le_0_n.
-    - elimtype False; apply (H0 0).
+    - exfalso; apply (H0 0).
     - simpl. apply le_n_S. apply IHl1. intro n.
       apply (H0 (Datatypes.S n)).
   Qed.
@@ -280,7 +280,7 @@ Definition subsumes n1 n2 x1 x2 :=
 
   (* l is lte all lifetimes in the emptty set *)
   Lemma all_lte_empty l st : all_lte l (fun _ : nat => False) st.
-  Proof. repeat intro; elimtype False; assumption. Qed.
+  Proof. repeat intro; exfalso; assumption. Qed.
 
   (* All lifetimes in a set are finished *)
   Definition all_finished (ls : nat -> Prop) st : Prop :=

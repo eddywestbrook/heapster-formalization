@@ -165,7 +165,7 @@ Global Program Instance IxPartialLens_option A : IxPartialLens unit (option A) A
     iput _ _ a := Some a;
   |}.
 Next Obligation.
-  elimtype False. apply H. destruct i1; destruct i2; reflexivity.
+  exfalso. apply H. destruct i1; destruct i2; reflexivity.
 Qed.
 
 
@@ -215,7 +215,7 @@ Class DecidableEq (A:Type) := dec_eq : forall (x y : A), {x = y} + {x <> y}.
 (* The unit type trivially has decidable equality *)
 Global Program Instance DecidableEq_unit : DecidableEq unit := fun _ _ => left _.
 Next Obligation.
-  destruct H; destruct H0; reflexivity.
+  destruct u; destruct u0; reflexivity.
 Qed.
 
 (* Natural numbers have decidable equality *)
@@ -251,12 +251,12 @@ Next Obligation.
 Qed.
 Next Obligation.
   destruct (dec_eq i1 i); [ destruct (dec_eq i2 i0) | ]; subst.
-  - elimtype False; auto.
+  - exfalso; auto.
   - destruct (iget i a); simpl in H5;
-      [ | elimtype False; auto ].
+      [ | exfalso; auto ].
     rewrite iGetPut_eq. simpl. eapply iGetPut_neq; eassumption.
   - case_eq (iget i1 a); intros; rewrite H6 in H5; simpl in H5;
-      [ | elimtype False; auto ].
+      [ | exfalso; auto ].
     erewrite iGetPut_neq; try rewrite H6;
       [ reflexivity | assumption | intro; discriminate ].
 Qed.
@@ -271,7 +271,7 @@ Next Obligation.
   - rewrite iGetPut_eq. simpl. repeat rewrite iPutPut_eq. reflexivity.
 Qed.
 Next Obligation.
-  revert H4; case_eq (iget i a); simpl; intros; [ | elimtype False; auto ].
+  revert H4; case_eq (iget i a); simpl; intros; [ | exfalso; auto ].
   rewrite iGetPut_eq. simpl.
   erewrite iPutPut; [ | rewrite H4; intro; discriminate ].
   erewrite iPutPut; [ reflexivity | eassumption ].
@@ -371,7 +371,7 @@ Lemma replace_list_index_twice {A} l n new1 new2 :
 Proof.
   revert n; induction l; intros; [ induction n | destruct n ]; simpl; try reflexivity.
   - inversion H.
-  - f_equal. apply IHl. apply Lt.lt_S_n. assumption.
+  - f_equal. apply IHl. apply PeanoNat.lt_S_n. assumption.
 Qed.
 
 
@@ -386,8 +386,8 @@ Next Obligation.
 Qed.
 Next Obligation.
   revert i1 i2 H H0; induction a; intros; [ | destruct i1 ].
-  - destruct i1; simpl in H0; elimtype False; auto.
-  - destruct i2; [ elimtype False; apply H; reflexivity | ].
+  - destruct i1; simpl in H0; exfalso; auto.
+  - destruct i2; [ exfalso; apply H; reflexivity | ].
     simpl; reflexivity.
   - destruct i2; [ simpl; reflexivity | ]. apply IHa.
     + intro; subst. apply H; reflexivity.
@@ -402,9 +402,9 @@ Qed.
 Next Obligation.
   apply replace_list_index_twice.
   revert i H; induction a; intros; [ | destruct i ].
-  - destruct i; simpl in H; elimtype False; auto.
-  - apply Lt.neq_0_lt. simpl. intro; discriminate.
-  - simpl. apply Lt.lt_n_S. apply IHa. assumption.
+  - destruct i; simpl in H; exfalso; auto.
+  - apply le_n_S. apply le_0_n.
+  - simpl. apply le_n_S. apply IHa. assumption.
 Qed.
 
 
@@ -418,7 +418,7 @@ Proof.
   - apply nth_error_None. subst. reflexivity.
   - subst. apply nth_error_Some in H0. simpl.
     destruct (nth_error l i); [ eexists; reflexivity | ].
-    elimtype False; apply H0; reflexivity.
+    exfalso; apply H0; reflexivity.
   - revert n H; induction l; destruct n; intros; destruct H.
     + reflexivity.
     + destruct (H0 n); [ unfold lt; reflexivity | ].
@@ -427,7 +427,7 @@ Proof.
     + simpl. f_equal. apply IHl. simpl in H.
       split; [ assumption | ]. intros.
       apply (H0 (Datatypes.S i)).
-      apply Lt.lt_n_S. assumption.
+      apply le_n_S. assumption.
 Qed.
 
 Lemma self_contained_list_ixs {A} n : self_contained_ixs (B:=A) (fun i => i >= n).
@@ -439,13 +439,13 @@ Proof.
         [ reflexivity | apply Nat.le_0_l ] | ].
     rewrite repeat_length.
     transitivity n; [ | assumption ].
-    destruct (Nat.le_gt_cases n ix_out); [ elimtype False; apply (H0 H1) | ].
+    destruct (Nat.le_gt_cases n ix_out); [ exfalso; apply (H0 H1) | ].
     rewrite Nat.add_1_r. assumption.
   - destruct ix_in.
-    + assert (0 = n); [ apply (Le.le_n_0_eq n H) | ]; subst.
-      elimtype False; apply H0. apply Nat.le_0_l.
+    + inversion H; subst.
+      exfalso; apply H0. apply le_0_n.
     + destruct ix_out; [ reflexivity | ]. simpl.
-      destruct n; [ elimtype False; apply H0; apply Nat.le_0_l | ].
+      destruct n; [ exfalso; apply H0; apply le_0_n | ].
       apply (IHst n).
       * apply le_S_n. assumption.
       * intro. apply H0. apply le_n_S. assumption.

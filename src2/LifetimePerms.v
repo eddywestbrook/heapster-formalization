@@ -636,7 +636,7 @@ Section LifetimePerms.
         etransitivity; [ | apply H13; reflexivity ].
         destruct H9 as [[? ?] ?].
         apply (sep_l _ _ H); try assumption.
-        right. split; [ reflexivity | ]. intros; elimtype False; assumption.
+        right. split; [ reflexivity | ]. intros; exfalso; assumption.
   Qed.
 
   (* If we held both a when p and an after p before l was ended then we can
@@ -743,7 +743,7 @@ Section LifetimeRules.
     intros l1 l2 eql P1 P2 entP. subst.
     apply mono_ent_rewind_conj; [ | assumption ].
     intros. simpl in H. eapply guar_inc; try eassumption.
-    right. split; [ reflexivity | intros; elimtype False; assumption ].
+    right. split; [ reflexivity | intros; exfalso; assumption ].
   Qed.
 
   (* rewind_lt is Proper wrt entailment *)
@@ -758,7 +758,7 @@ Section LifetimeRules.
   Proof.
     apply bigger_Perms_entails. apply rewind_conj_gte_Q.
     intros. simpl in H. apply H; [ assumption | ].
-    right. split; [ reflexivity | intros; elimtype False; assumption ].
+    right. split; [ reflexivity | intros; exfalso; assumption ].
   Qed.
 
   (* The rewind_lt of a conjunction entails the conjunction of rewind_lts *)

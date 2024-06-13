@@ -2020,8 +2020,8 @@ Section Permissions.
   Proof.
     split; [ | split ]; repeat intro.
     - destruct H. apply (H1 bottom_perm H0).
-    - elimtype False; assumption.
-    - elimtype False; apply H; apply H0.
+    - exfalso; assumption.
+    - exfalso; apply H; apply H0.
   Qed.
 
 
