@@ -1947,6 +1947,20 @@ Section Permissions.
     eapply H; eauto.
   Qed.
 
+  (* Meet commutes with any monotonic permission set operation that FIXME *)
+  Lemma meet_commutes Ps F `{Proper _ (lte_Perms ==> lte_Perms) F} :
+    (forall p, p ∈ F (meet_Perms Ps) -> exists P, p ∈ F P /\ Ps P) ->
+    F (meet_Perms Ps) ≡ meet_Perms (fun R => exists P, R = F P /\ Ps P).
+  Proof.
+    split.
+    - apply meet_Perms_max; intros. destruct_ex_conjs H1; subst.
+      apply H. apply lte_meet_Perms.
+      eexists; split; [ eassumption | reflexivity ].
+    - repeat intro. destruct (H0 p H1) as [P [? ?]].
+      eexists. split; [ | eassumption ].
+      exists P; split; [ reflexivity | assumption ].
+  Qed.
+
   Definition meet_Perms2 P Q : Perms := meet_Perms (fun R => R = P \/ R = Q).
 
   (* Binary join commutes with meet *)
@@ -2029,16 +2043,31 @@ Section Permissions.
   Definition mapPerms (f : perm -> perm) (P : Perms) : Perms :=
     mkPerms (fun y => exists x, in_Perms P x /\ y = f x).
 
-  Global Instance Proper_eq_Perms_mapPerms f :
+  Global Instance Proper_lte_mapPerms f :
+    Proper (lte_Perms ==> lte_Perms) (mapPerms f).
+  Proof.
+    intros p q lte_pq. repeat intro.
+    simpl in H. destruct_ex_conjs H; subst.
+    eexists. split; [ | eassumption ].
+    eexists; split; [ | reflexivity ].
+    apply lte_pq; assumption.
+  Qed.
+
+  Global Instance Proper_eq_mapPerms f :
     Proper (eq_Perms ==> eq_Perms) (mapPerms f).
   Proof.
-    intros p q [? ?]. split; repeat intro.
-    - simpl in H1. destruct_ex_conjs H1; subst.
-      exists (f x0). split; [ | assumption ].
-      exists x0; split; [ apply H; assumption | reflexivity ].
-    - simpl in H1; destruct_ex_conjs H1; subst.
-      exists (f x0). split; [ | assumption ].
-      exists x0; split; [ apply H0; assumption | reflexivity ].
+    intros p q [? ?]. split; apply Proper_lte_mapPerms; assumption.
+  Qed.
+
+  (* mapPerms commutes with meet *)
+  Lemma mapPerms_meet_commutes f Ps :
+    mapPerms f (meet_Perms Ps) ≡ meet_Perms (fun R => exists P, R = mapPerms f P /\ Ps P).
+  Proof.
+    apply meet_commutes; [ typeclasses eauto | ]. intros.
+    simpl in H. destruct_ex_conjs H; subst.
+    eexists; split; [ | eassumption ].
+    eexists; split; [ | eassumption ].
+    eexists; split; [ eassumption | reflexivity ].
   Qed.
 
   (* We could equivalently have defined mapPerms as a meet *)
@@ -2161,18 +2190,11 @@ Section Permissions.
   Lemma add_pre_Perms_meet_commute pred Ps :
     add_pre pred (meet_Perms Ps) ≡ meet_Perms (fun Q => exists P, Q = add_pre pred P /\ Ps P).
   Proof.
-    split.
-    - apply meet_Perms_max; intros.
-      destruct_ex_conjs H; subst.
-      repeat intro. simpl in H. destruct_ex_conjs H; subst.
-      eexists. split; [ | apply H2 ].
-      exists x1. split; [ | reflexivity ].
-      exists x; split; assumption.
-    - repeat intro. simpl in H.
-      destruct_ex_conjs H; subst.
-      eexists. split; [ exists x1; split; [ reflexivity | assumption ] | ].
-      eexists. split; [ | apply H1 ].
-      exists x0. split; [ assumption | reflexivity ].
+    apply meet_commutes; [ apply Proper_lte_add_pre; reflexivity | intros ].
+    simpl in H; destruct_ex_conjs H; subst.
+    eexists; split; [ | eassumption ].
+    eexists; split; [ | eassumption ].
+    eexists; split; [ eassumption | reflexivity ].
   Qed.
 
   (* Adding a precondition yields a bigger permission set *)
@@ -2250,6 +2272,18 @@ Section Permissions.
     apply H; assumption.
   Qed.
 
+  (* rewind_conj f P commutes with meet *)
+  Lemma rewind_conj_meet_commutes f P Qs :
+    rewind_conj f P (meet_Perms Qs)
+      ≡ meet_Perms (fun R => exists Q, R = rewind_conj f P Q /\ Qs Q).
+  Proof.
+    apply meet_commutes; [ apply Proper_lte_rewind_conj; reflexivity | ].
+    intros. simpl in H. destruct_ex_conjs H; subst.
+    eexists; split; [ | eassumption ].
+    eexists. split; [ | eassumption ].
+    eexists; eexists. repeat (split; [ eassumption | ]). reflexivity.
+  Qed.
+
 
   (* The permission set built from removing the guarantees of perms in P *)
   Definition no_guar_Perms P : Perms := mapPerms no_guar P.
@@ -2297,10 +2331,16 @@ Section Permissions.
     - destruct H as [? [_ [[] _]]].
   Qed.
 
-  Lemma sep_conj_Perms_monotone : forall P P' Q Q', P' ⊑ P -> Q' ⊑ Q -> P' * Q' ⊑ P * Q.
+  Lemma sep_conj_Perms_monotone P P' Q Q' : P' ⊑ P -> Q' ⊑ Q -> P' * Q' ⊑ P * Q.
   Proof.
     repeat intro. destruct H1 as [? [? [? [? [? ?]]]]].
     exists x, x0. auto.
+  Qed.
+
+  Global Instance Proper_lte_Perms_sep_conj_Perms :
+    Proper (lte_Perms ==> lte_Perms ==> lte_Perms) sep_conj_Perms.
+  Proof.
+    intros P1 P2 lteP Q1 Q2 lteQ; apply sep_conj_Perms_monotone; assumption.
   Qed.
 
   Global Instance Proper_eq_Perms_sep_conj_Perms :
@@ -2394,19 +2434,15 @@ Section Permissions.
   Qed.
 
   (* The conjunction with a meet is another meet *)
-  Lemma sep_conj_Perms_meet_commute : forall (Ps : Perms -> Prop) P,
-      (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = P' * P /\ Ps P').
+  Lemma sep_conj_Perms_meet_commute (Ps : Perms -> Prop) P :
+    (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = P' * P /\ Ps P').
   Proof.
-    split; repeat intro.
-    - destruct H as [? [[Q [? ?]] ?]].
-      subst. destruct H1 as [? [? [? [? ?]]]].
-      simpl. exists x, x0. split; [ | split]; auto.
-      eexists; split; eauto.
-    - destruct H as [? [? [[Q [? ?]] [? [? ?]]]]].
-      simpl. eexists. split.
-      + exists Q. split; auto.
-      + eapply Perms_upwards_closed; eauto.
-        simpl. exists x, x0. split; [auto | split; [auto | ]]. split; auto. reflexivity.
+    unshelve eapply (meet_commutes _ (fun Q => Q * P));
+      [ intros Q1 Q2 ltQ; apply Proper_lte_Perms_sep_conj_Perms;
+        [ assumption | reflexivity ] | ].
+    intros. simpl in H; destruct_ex_conjs H; subst.
+    eexists; split; [ | eassumption ].
+    eexists; eexists. repeat (split; [ eassumption | ]). assumption.
   Qed.
 
   (* The conjunction of two meets is another meet *)
