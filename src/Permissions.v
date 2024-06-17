@@ -1016,6 +1016,17 @@ Section Permissions.
     - eapply H; eassumption.
   Qed.
 
+  (* All invperms are separate from each other *)
+  Lemma separate_invperm_invperm pred1 pred2 :
+    invperm pred1 ⊥ invperm pred2.
+  Proof.
+    apply separate_invperm; intros. simpl in H0; subst. assumption.
+  Qed.
+
+  (* All invperms are self-separate *)
+  Lemma self_sep_invperm pred : invperm pred ⊥ invperm pred.
+  Proof. apply separate_invperm_invperm. Qed.
+
   (* Permissions with a trivial guarantee are always self-separate *)
   Lemma self_sep_trivial_guar p :
     (forall x y, guar p x y <-> x = y) -> p ⊥ p.
@@ -1023,10 +1034,6 @@ Section Permissions.
     intro H; constructor; intros;
       rewrite (H x y) in H2; inversion H2; reflexivity.
   Qed.
-
-  (* All invperms are self-separate *)
-  Lemma self_sep_invperm pred : invperm pred ⊥ invperm pred.
-  Proof. apply self_sep_trivial_guar. simpl. intros ? ?; reflexivity. Qed.
 
   (* A permission is always separate from a larger one's invperm *)
   Lemma separate_bigger_invperm p q : p <= q -> invperm (inv q) ⊥ p.
