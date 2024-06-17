@@ -513,23 +513,23 @@ Section Permissions.
 
   (* Adding a precondition is Proper wrt the precondition and the permission *)
   Global Instance Proper_lte_add_pre_perm :
-    Proper ((eq ==> Basics.impl) --> lte_perm ==> lte_perm) add_pre_perm.
+    Proper (pointwise_relation _ Basics.impl --> lte_perm ==> lte_perm) add_pre_perm.
   Proof.
     intros pred1 pred2 Rpred p q Rpq.
     constructor; intros; try (apply Rpq; assumption).
     destruct H0 as [? [y [? [? ?]]]]. split; [ apply Rpq; assumption | ].
     exists y.
     split; [ apply Rpq; assumption | ].
-    split; [ apply (Rpred y y (reflexivity _)); assumption | ].
+    split; [ apply (Rpred y); assumption | ].
     apply Rpq; assumption.
   Qed.
 
   Global Instance Proper_eq_add_pre_perm :
-    Proper ((eq ==> iff) ==> eq_perm ==> eq_perm) add_pre_perm.
+    Proper (pointwise_relation _ iff ==> eq_perm ==> eq_perm) add_pre_perm.
   Proof.
     intros pred1 pred2 ? p q [? ?].
     split; eapply Proper_lte_add_pre_perm; try assumption;
-      repeat intro; subst; apply (H y y (reflexivity _)); assumption.
+      repeat intro; apply H; assumption.
   Qed.
 
   (* Adding a precondition that is already implied by the precondition of a
@@ -1858,7 +1858,7 @@ Section Permissions.
   Qed.
 
   (* singleton_Perms preserves ordering, for rewriting *)
-  Global Instance Proper_singleton_Perms :
+  Global Instance Proper_lte_singleton_Perms :
     Proper (lte_perm --> Basics.flip lte_Perms) singleton_Perms.
   Proof. repeat intro; eapply lte_singleton_Perms; eassumption. Qed.
 
@@ -1866,6 +1866,13 @@ Section Permissions.
   Global Instance Proper_gte_singleton_Perms :
     Proper (gte_perm ==> Basics.flip lte_Perms) singleton_Perms.
   Proof. repeat intro; eapply lte_singleton_Perms; eassumption. Qed.
+
+  (* singleton_Perms preserves equality, for rewriting *)
+  Global Instance Proper_eq_singleton_Perms :
+    Proper (eq_perm ==> eq_Perms) singleton_Perms.
+  Proof.
+    intros p q [? ?]; split; apply lte_singleton_Perms; assumption.
+  Qed.
 
   (* The complete join / least upper bound of a set of permission sets = the
   intersection of all permission sets in the set *)
@@ -2197,7 +2204,7 @@ Section Permissions.
   (* add_pre is monotonic wrt the inverse implication ordering on predicates and
      the ordering on permissions *)
   Global Instance Proper_lte_add_pre :
-    Proper ((eq ==> Basics.impl) --> lte_Perms ==> lte_Perms) add_pre.
+    Proper (pointwise_relation _ Basics.impl --> lte_Perms ==> lte_Perms) add_pre.
   Proof.
     intros pred1 pred2 Rpred P Q R_PQ r H.
     simpl. destruct H as [? [[p [? ?]] ?]]; subst.
@@ -2208,11 +2215,11 @@ Section Permissions.
   Qed.
 
   Global Instance Proper_eq_add_pre :
-    Proper ((eq ==> iff) ==> eq_Perms ==> eq_Perms) add_pre.
+    Proper (pointwise_relation _ iff ==> eq_Perms ==> eq_Perms) add_pre.
   Proof.
     intros pred1 pred2 H Q1 Q2 [? ?].
     split; apply Proper_lte_add_pre; try assumption;
-      repeat intro; subst; apply (H _ _ (reflexivity _)); assumption.
+      repeat intro; subst; apply H; assumption.
   Qed.
 
   Lemma add_pre_Perms_meet_commute pred Ps :
@@ -2661,7 +2668,7 @@ Section Permissions.
   (* add_poss_pre is monotonic wrt the inverse implication ordering on
      predicates and the ordering on permissions *)
   Global Instance Proper_lte_add_poss_pre :
-    Proper ((eq ==> Basics.impl) --> lte_Perms ==> lte_Perms) add_poss_pre.
+    Proper (pointwise_relation _ Basics.impl --> lte_Perms ==> lte_Perms) add_poss_pre.
   Proof.
     intros pred1 pred2 Rpred P Q R_PQ p inQ.
     destruct inQ as [q [[? [x [? [? ?]]]] ?]].
@@ -2669,7 +2676,7 @@ Section Permissions.
     split.
     - rewrite R_PQ. rewrite Rpred. assumption.
     - exists x; split; [ | split ]; try assumption.
-      apply (Rpred _ _ (reflexivity _)); assumption.
+      apply Rpred; assumption.
   Qed.
 
   Global Instance Proper_eq_add_poss_pre :
