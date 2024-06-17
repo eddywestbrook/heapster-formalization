@@ -565,47 +565,43 @@ Section LifetimePerms.
 
   (* l1 is current whenever l2 is current, i.e., Some current <= l1 <= l2. This
   means that l1 is an ancestor of l2, i.e., a larger lifetime containing l2. *)
-  Program Definition lcurrent_perm l1 l2 :=
-    {|
-      pre x := True;
-      rely x y :=
-        statusOf_lte (lifetime x l1) (lifetime y l1) /\
-          statusOf_lte (lifetime x l2) (lifetime y l2) /\
-          (statusOf_lte (lifetime x l1) (lifetime x l2) ->
-           statusOf_lte (lifetime y l1) (lifetime y l2));
-      guar x y := x = y;
-      inv x :=
-        statusOf_lte (Some current) (lifetime x l1) /\
-          statusOf_lte (lifetime x l1) (lifetime x l2)
-    |}.
-  Next Obligation.
-    split.
-    - change (statusOf_lte (Some current) (lifetime y l1)).
-      etransitivity; eassumption.
-    - auto.
-  Qed.
+  Definition lcurrent_perm l1 l2 :=
+    invperm (fun x => statusOf_lte (Some current) (lifetime x l1) /\
+                        statusOf_lte (lifetime x l1) (lifetime x l2)).
 
   (* lcurrent can be duplicated *)
   Lemma lcurrent_dup l1 l2 :
     eq_perm (lcurrent_perm l1 l2) (lcurrent_perm l1 l2 ** lcurrent_perm l1 l2).
-  Proof.
-    apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
-  Qed.
+  Proof. apply invperm_dup. Qed.
 
   (* Transitivity of lcurrent *)
   Lemma lcurrent_trans l1 l2 l3 :
     lcurrent_perm l1 l3 <= lcurrent_perm l1 l2 ** lcurrent_perm l2 l3.
   Proof.
-    constructor; intros.
-    - apply I.
-    - destruct H as [[? ?] [[? ?] ?]].
-      destruct H0 as [[? [? ?]] [? [? ?]]].
-      split; [ assumption | ]. split; [ assumption | ]. intro.
-      etransitivity; eauto.
-    - simpl in H0. apply t_step; left; assumption.
-    - destruct H as [[? ?] [[? ?] ?]].
-      split; [ assumption | ]. etransitivity; eassumption.
+    unfold lcurrent_perm. rewrite sep_conj_invperm_conj. apply lte_invperm.
+    intros. destruct H as [[? ?] [? ?]].
+    split; [ | etransitivity ]; eassumption.
   Qed.
+
+  (* lcurrent_perm l1 l2 is separate from lowned_perm l2 *)
+  Lemma separate_lcurrent_lowned2 l1 l2 :
+    l1 <> l2 -> lcurrent_perm l1 l2 ⊥ lowned_perm l2 (fun _ => False).
+  Proof.
+    symmetry; apply separate_invperm; intros.
+    destruct H1 as [? | [? ?]]; subst; [ assumption | ].
+    destruct H0. rewrite end_lifetime_eq.
+    rewrite end_lifetime_neq; [ | assumption | etransitivity; eassumption ].
+    split; [ assumption | ]. apply finished_greatest.
+  Qed.
+
+  (* Any permission separate from lowned_perm of both l1 and l2 is separate from
+     lcurrent_perm l1 l2 *)
+  Lemma sep_lowned_sep_lcurrent p l1 l2 :
+    p ⊥ lowned_perm l1 (fun _ => False) ->
+    p ⊥ lowned_perm l2 (fun _ => False) ->
+    p ⊥ lcurrent_perm l1 l2.
+  Proof.
+  Admitted.
 
 
   (* Permission stating that a lifetime will always be current *)
@@ -638,6 +634,8 @@ Section LifetimePerms.
 
   (* Separateness of p from lcurrent l1 l2 is necessary to ensure that any guar
   step of when_perm l2 p does not end l1 *)
+  (* FIXME: maybe this now needs to require p separate from lowned_perm l2? *)
+  (*
   Lemma lcurrent_when l1 l2 p :
     p ⊥ lcurrent_perm l1 l2 ->
     when_perm l2 p <= when_perm l1 p ** lcurrent_perm l1 l2.
@@ -646,7 +644,12 @@ Section LifetimePerms.
     - destruct H as [[? ?] [[? ?] ?]].
       destruct H0 as [[? | ?] ?]; [ left; assumption | ].
       right. apply finished_lte_eq. rewrite <- H0. assumption.
-    - destruct H as [[? ?] [[? ?] ?]]. destruct H0 as [[? ?] [? [? ?]]].
+    - destruct H as [[? ?] [[? ?] ?]]. destruct H0 as [[? ?] ?].
+      destruct H6; [ split; try assumption | ].
+      simpl.
+
+      simpl in H5.
+      split.
       split; [ assumption | ].
       destruct H5 as [? | [? ?]]; [ left; assumption | ].
       right; split; [ | assumption ].
@@ -665,6 +668,7 @@ Section LifetimePerms.
     - destruct H as [[? ?] [[? ?] ?]].
       split; [ assumption | ]. etransitivity; eassumption.
   Qed.
+   *)
 
 
   (* Lifetime l is finished *)
@@ -1229,6 +1233,7 @@ Section LifetimeRules.
   (* FIXME: docs *)
   Lemma lfinished_after_recover_ixplens {Ix Elem} `{IxPartialLens Ix S Elem} l1 l2 rw ix P :
     l1 <> l2 ->
+    ixplens_perm_any Write ix ⊥ lowned_perm l1 (fun _ => False) ->
     ixplens_perm_any Write ix ⊥ lowned_perm l2 (fun _ => False) ->
     lfinished l2 * (rewind_lt l2
                       (ixplens_ldep l2 rw ix P
@@ -1236,11 +1241,11 @@ Section LifetimeRules.
                        * after l2 (when l1 (singleton_Perms (ixplens_perm_any rw ix)))))
     ⊨ ixplens_ldep l1 rw ix P.
   Proof.
-    intros. unfold ixplens_ldep.
+    intros neq_l sep_l1 sep_l2. unfold ixplens_ldep.
     repeat rewrite sep_conj_Perms_meet_commute.
     rewrite rewind_lt_meet_commutes.
     rewrite sep_conj_Perms_commut. rewrite sep_conj_Perms_meet_commute.
-    apply meet_Perms_max_ent; intros. destruct_ex_conjs H2; subst.
+    apply meet_Perms_max_ent; intros. destruct_ex_conjs H0; subst.
     apply ent_meet_Perms. eexists.
     split; [ exists x3; reflexivity | ].
     rewrite (sep_conj_Perms_commut _ (lfinished l2)).
@@ -1253,29 +1258,61 @@ Section LifetimeRules.
     repeat rewrite when_singleton. rewrite after_singleton.
     unfold lcurrent.
     rewrite sep_conj_singleton.
-    2: { admit. }
+    2: { apply sep_lowned_sep_lcurrent.
+         - symmetry; apply separate_when;
+             [ | apply lowned_lowned_separate; assumption ].
+           apply ixplens_sep_write_sep_any; symmetry; assumption.
+         - apply separate_when_lowned.
+           symmetry; apply ixplens_sep_write_sep_any; symmetry; assumption. }
     rewrite sep_conj_singleton.
-    2: { admit. }
-    rewrite rewind_lt_singleton; [ | admit ].
+    2: { symmetry; apply separate_sep_conj_perm.
+         - symmetry; apply separate_when_after_diff.
+           + apply separate_invperm; intros. split; [ apply I | ].
+             destruct H0.
+             assert (rely (lowned_perm l1 (fun _ => False)) x y) as [eq_l1 ?];
+               [ | rewrite <- eq_l1; assumption ].
+             apply (sep_l _ (ixplens_perm_any rw ix)); try assumption.
+             * apply ixplens_sep_write_sep_any; symmetry; assumption.
+             * split; [ assumption | intros ? fls; inversion fls ].
+           + apply separate_invperm; intros. apply I.
+         - apply sep_lowned_sep_lcurrent.
+           + symmetry; apply separate_after;
+               [ | apply lowned_lowned_separate; assumption ].
+             symmetry; apply separate_when_lowned.
+             symmetry; apply ixplens_sep_write_sep_any; symmetry; assumption.
+           + apply separate_after_lowned.
+             symmetry; apply separate_when;
+               [ | symmetry; apply lowned_lowned_separate; assumption ].
+             apply ixplens_sep_write_sep_any; symmetry; assumption. }
+    rewrite rewind_lt_singleton.
+    2: { symmetry; apply separate_sep_conj_perm; [ apply separate_sep_conj_perm | ].
+         - symmetry; apply separate_when_lowned.
+           symmetry; apply ixplens_sep_write_sep_any; symmetry; assumption.
+         - symmetry; apply separate_lcurrent_lowned2. assumption.
+         - symmetry; apply separate_after_lowned.
+           symmetry; apply separate_when.
+           + apply ixplens_sep_write_sep_any; symmetry; assumption.
+           + symmetry; apply lowned_lowned_separate; assumption. }
     unfold lfinished. rewrite sep_conj_singleton.
-    2: { admit.
-         (* symmetry; apply separate_rewind; symmetry; apply sep_conj_perm_separate;
-         [ apply lfinished_when_sep | apply lfinished_after_sep ]. *) }
+    2: { symmetry; apply separate_rewind.
+         symmetry; apply sep_conj_perm_separate; [ | apply lfinished_after_sep ].
+         apply separate_sep_conj_perm;
+           [ apply lfinished_when_sep | apply separate_invperm_invperm ]. }
     rewrite (lfinished_after_recover_perm _ _ _ (fun x => iget ix x = Some x3)).
     - rewrite add_pre_when_perm_lte. rewrite add_pre_eq_ixplens_perm.
       reflexivity.
     - symmetry; apply separate_when.
       + apply ixplens_sep_write_sep_any; symmetry; assumption.
       + symmetry; apply lowned_lowned_separate; assumption.
-    - intros. destruct H3 as [? [? ?]].
-      destruct H4 as [[? | ?] _]; [ | rewrite H4 in H2; inversion H2 ].
-      simpl in H4. destruct_ex_conjs H4; subst.
-      split; [ assumption | ]. destruct H5. rewrite H2 in H7.
+    - intros. destruct H1 as [? [? ?]].
+      destruct H2 as [[? | ?] _]; [ | rewrite H2 in H0; inversion H0 ].
+      simpl in H2. destruct_ex_conjs H2; subst.
+      split; [ assumption | ]. destruct H3. rewrite H0 in H5.
       assert (lifetime x l1 = Some current);
         [ apply statusOf_lte_eq; assumption | ].
       split; [ split; [ simpl; trivial | assumption ] | ].
       left. exists x0. split; [ assumption | trivial ].
-  Admitted.
+  Qed.
 
 (* End LifetimeRules. *)
 End LifetimePerms.
