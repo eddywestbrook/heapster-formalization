@@ -1008,7 +1008,7 @@ Section Permissions.
 
   (* If p preserves pred then p _|_ invperm pred *)
   Lemma separate_invperm p (pred : config -> Prop) :
-    (forall x y, pred x -> guar p x y -> pred y) ->
+    (forall x y, inv p x -> pred x -> guar p x y -> pred y) ->
     separate p (invperm pred).
   Proof.
     intro. constructor; simpl; intros.
@@ -1020,7 +1020,7 @@ Section Permissions.
   Lemma separate_invperm_invperm pred1 pred2 :
     invperm pred1 ⊥ invperm pred2.
   Proof.
-    apply separate_invperm; intros. simpl in H0; subst. assumption.
+    apply separate_invperm; intros. simpl in H1; subst. assumption.
   Qed.
 
   (* All invperms are self-separate *)
@@ -1224,7 +1224,7 @@ Section Permissions.
     - rewrite clos_trans_eq_or in H0; [ | typeclasses eauto ].
       apply clos_trans_trans; [ typeclasses eauto | assumption ].
     - destruct H; split; [ | split ]; try assumption.
-      apply separate_invperm; intros. inversion H2. subst; assumption.
+      apply separate_invperm; intros. inversion H3. subst; assumption.
     - constructor.
     - destruct H1. destruct H0. split; auto.
     - subst; apply t_step; left; reflexivity.
