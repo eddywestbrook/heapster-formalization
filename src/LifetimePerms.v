@@ -89,6 +89,16 @@ Section LifetimePerms.
     apply H2; assumption.
   Qed.
 
+  (* A guarantee that is separate from lowned cannot the owned lifetime *)
+  Lemma sep_lowned_lifetime_eq p l ls x y :
+    p ⊥ lowned_perm l ls -> inv p x -> inv (lowned_perm l ls) x ->
+    guar p x y -> lifetime x l = lifetime y l.
+  Proof.
+    intros.
+    assert (rely (lowned_perm l ls) x y) as [? ?]; [ | assumption ].
+    eapply sep_r; eassumption.
+  Qed.
+
   (* lmutate_perm l sep_steps to lowned_perm l with no child lifetimes *)
   Lemma lmutate_sep_step_lowned l :
     sep_step (lmutate_perm l) (lowned_perm l (fun _ => False)).
@@ -105,7 +115,6 @@ Section LifetimePerms.
       unfold lifetime, Lifetimes in H. unfold IxPartialLens_Lifetimes in H2.
       rewrite H2 in H. apply H.
   Qed.
-
 
   (* Setting a lifetime to current using an lmutate_perm l can get you an
   lowned_perm l with no child lifetimes *)
@@ -588,8 +597,8 @@ Section LifetimePerms.
     l1 <> l2 -> lcurrent_perm l1 l2 ⊥ lowned_perm l2 (fun _ => False).
   Proof.
     symmetry; apply separate_invperm; intros.
-    destruct H1 as [? | [? ?]]; subst; [ assumption | ].
-    destruct H0. rewrite end_lifetime_eq.
+    destruct H2 as [? | [? ?]]; subst; [ assumption | ].
+    destruct H1. rewrite end_lifetime_eq.
     rewrite end_lifetime_neq; [ | assumption | etransitivity; eassumption ].
     split; [ assumption | ]. apply finished_greatest.
   Qed.
@@ -601,7 +610,13 @@ Section LifetimePerms.
     p ⊥ lowned_perm l2 (fun _ => False) ->
     p ⊥ lcurrent_perm l1 l2.
   Proof.
-  Admitted.
+    intros. apply separate_invperm; intros. destruct H2.
+    erewrite <- (sep_lowned_lifetime_eq _ l1); try eassumption;
+      [ | split; [ assumption | intros ? fls; inversion fls ]].
+    erewrite <- (sep_lowned_lifetime_eq _ l2); try eassumption;
+      [ | split; [ etransitivity; eassumption | intros ? fls; inversion fls ]].
+    split; assumption.
+  Qed.
 
 
   (* Permission stating that a lifetime will always be current *)
@@ -626,10 +641,43 @@ Section LifetimePerms.
       split; assumption.
   Qed.
 
-  (* when with an always lifetime of a permission is equal to that permission *)
+  (* when with an always lifetime of a permission is equal to that permission if
+     the permission is separate from lowned *)
   Lemma when_lalways_eq_p_perm l p :
+    p ⊥ lowned_perm l (fun _ => False) ->
     lalways_perm l ** when_perm l p ≡≡ lalways_perm l ** p.
-  Admitted.
+  Proof.
+    intro psep; split; constructor; intros.
+    - split; [ apply I | ]. destruct H0. left; assumption.
+    - destruct H. simpl in H. destruct H0.
+      split; [ assumption | ]. split; [ | left; assumption ].
+      rewrite H. rewrite (H0 H). reflexivity.
+    - unfold lalways_perm in H0. rewrite sep_conj_invperm_guar_eq in H0.
+      destruct H0 as [? | [? [? ?]]]; subst; [ reflexivity | ].
+      apply t_step; right; assumption.
+    - destruct H as [? [? ?]]. split; [ assumption | ]. simpl in H.
+      split; [ split; [ assumption | rewrite H; reflexivity ] | ].
+      symmetry; apply separate_invperm; intros.
+      destruct H4 as [? | [? [? ?]]]; subst; assumption.
+    - destruct H. simpl in H.
+      destruct H0 as [_ [? | ?]]; [ | rewrite H in H0; inversion H0 ].
+      split; [ apply I | assumption ].
+    - destruct H. simpl in H. destruct H0 as [? [? ?]].
+      split; [ assumption | ]. destruct H3 as [? | [? ?]]; [ assumption | ].
+      rewrite (H0 H) in H3. inversion H3.
+    - unfold lalways_perm in H0. rewrite sep_conj_invperm_guar_eq in H0.
+      destruct H as [? [? ?]].
+      apply t_step; right. right. split; [ assumption | ]. split; [ | assumption ].
+      simpl in H. rewrite <- H. symmetry.
+      destruct H1.
+      eapply sep_lowned_lifetime_eq; try eassumption.
+      split; [ rewrite H; reflexivity | intros ? fls; inversion fls ].
+    - destruct H as [? [[? ?] ?]].
+      split; [ | split ]; try assumption.
+      symmetry; apply separate_invperm; intros.
+      rewrite <- H4. symmetry. eapply sep_lowned_lifetime_eq; try eassumption.
+      split; [ rewrite H4; reflexivity | intros ? fls; inversion fls ].
+  Qed.
 
 
   (* Separateness of p from lcurrent l1 l2 is necessary to ensure that any guar
@@ -697,15 +745,15 @@ Section LifetimePerms.
   Lemma lfinished_when_sep l p : lfinished_perm l ⊥ when_perm l p.
   Proof.
     symmetry; apply separate_invperm; intros.
-    destruct H0 as [? | [? [? ?]]]; [ subst; assumption | ].
-    rewrite H0 in H. inversion H.
+    destruct H1 as [? | [? [? ?]]]; [ subst; assumption | ].
+    rewrite H1 in H0. inversion H0.
   Qed.
 
   (* lfinished is always separate from after *)
   Lemma lfinished_after_sep l p : lfinished_perm l ⊥ after_perm l p.
   Proof.
     symmetry; apply separate_invperm; intros.
-    destruct H0 as [? | [? [? ?]]]; subst; assumption.
+    destruct H1 as [? | [? [? ?]]]; subst; assumption.
   Qed.
 
   (* Ending a lifetime gives you an lfinished *)
@@ -1228,8 +1276,6 @@ Section LifetimeRules.
       (fun R => exists elem,
            R = when l (singleton_Perms (ixplens_perm_eq rw ix elem)) * (P elem)).
 
-  (* FIXME: generalize to handle nested lifetimes *)
-
   (* FIXME: docs *)
   Lemma lfinished_after_recover_ixplens {Ix Elem} `{IxPartialLens Ix S Elem} l1 l2 rw ix P :
     l1 <> l2 ->
@@ -1268,7 +1314,7 @@ Section LifetimeRules.
     2: { symmetry; apply separate_sep_conj_perm.
          - symmetry; apply separate_when_after_diff.
            + apply separate_invperm; intros. split; [ apply I | ].
-             destruct H0.
+             destruct H1.
              assert (rely (lowned_perm l1 (fun _ => False)) x y) as [eq_l1 ?];
                [ | rewrite <- eq_l1; assumption ].
              apply (sep_l _ (ixplens_perm_any rw ix)); try assumption.
