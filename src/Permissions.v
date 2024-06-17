@@ -573,6 +573,10 @@ Section Permissions.
     split; apply Proper_lte_rewind_perm; assumption.
   Qed.
 
+  (* The guarantee of a rewind is the same as that of its RHS permission *)
+  Lemma rewind_guar_eq f p q : guar_eq (rewind_perm f p q) q.
+  Proof. repeat intro. simpl. reflexivity. Qed.
+
 
   (* Remove the guarantee of a permission, replacing it with equality *)
   Program Definition no_guar (p : perm) : perm :=
@@ -1858,6 +1862,10 @@ Section Permissions.
     Proper (lte_perm --> Basics.flip lte_Perms) singleton_Perms.
   Proof. repeat intro; eapply lte_singleton_Perms; eassumption. Qed.
 
+  (* Same as above but using >= in place of <= *)
+  Global Instance Proper_gte_singleton_Perms :
+    Proper (gte_perm ==> Basics.flip lte_Perms) singleton_Perms.
+  Proof. repeat intro; eapply lte_singleton_Perms; eassumption. Qed.
 
   (* The complete join / least upper bound of a set of permission sets = the
   intersection of all permission sets in the set *)
@@ -2142,15 +2150,35 @@ Section Permissions.
       eexists; eexists; split; [ eassumption | split; [ eassumption | reflexivity ]].
   Qed.
 
+  Global Instance Proper_lte_Perms_mapPerms2 f :
+    Proper (lte_Perms ==> lte_Perms ==> lte_Perms) (mapPerms2 f).
+  Proof.
+    intros P1 P2 lteP Q1 Q2 lteQ.
+    repeat rewrite mapPerms2_as_meet.
+    apply meet_Perms_max; intros. destruct_ex_conjs H; subst.
+    apply lte_meet_Perms; eexists.
+    split; [ | reflexivity ]. eexists; eexists.
+    split; [ apply lteP; eassumption | ]. split; [ apply lteQ; eassumption | ].
+    reflexivity.
+  Qed.
+
   Global Instance Proper_eq_Perms_mapPerms2 f :
     Proper (eq_Perms ==> eq_Perms ==> eq_Perms) (mapPerms2 f).
   Proof.
-    intros P1 P2 eqP Q1 Q2 eqQ.
-    repeat rewrite mapPerms2_as_meet.
-    split; apply meet_Perms_max; intros; apply lte_meet_Perms; eexists;
-      [ setoid_rewrite eqP; setoid_rewrite eqQ
-      | setoid_rewrite <- eqP; setoid_rewrite <- eqQ ];
-      (split; [ eassumption | reflexivity ]).
+    intros P1 P2 [? ?] Q1 Q2 [? ?].
+    split; apply Proper_lte_Perms_mapPerms2; assumption.
+  Qed.
+
+  (* mapPerms2 of a singleton is a singleton *)
+  Lemma mapPerms2_singleton f p q `{Proper _ (lte_perm ==> lte_perm ==> lte_perm) f} :
+    mapPerms2 f (singleton_Perms p) (singleton_Perms q) ≡ singleton_Perms (f p q).
+  Proof.
+    split; repeat intro.
+    - exists (f p q). split; [ | assumption ].
+      exists p; exists q. simpl. split; [ | split ]; reflexivity.
+    - simpl in H0. destruct_ex_conjs H0; subst.
+      simpl. etransitivity; [ | eassumption ].
+      apply H; assumption.
   Qed.
 
   (* f p q is in mapPerms2 f P Q if p in P and q in Q *)
