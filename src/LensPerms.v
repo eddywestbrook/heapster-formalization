@@ -84,6 +84,21 @@ Section PLensPerms.
     destruct H1 as [elem [? ?]]. eexists; split; [ | apply H ]; eassumption.
   Qed.
 
+  (* Adding a precondition that the value of ix = elem turns an ixplens_perm_any
+     into an ixplens_perm_eq *)
+  Lemma add_pre_eq_ixplens_perm rw ix elem :
+    add_pre_perm (fun x => iget ix x = Some elem) (ixplens_perm_any rw ix)
+      ≡≡ ixplens_perm_eq rw ix elem.
+  Proof.
+    split; constructor; intros; try assumption.
+    - destruct H0 as [elem2 [? ?]]; subst.
+      split; [ exists elem2; split; [ assumption | trivial ] | ].
+      exists x. repeat (split; [ assumption | ]). reflexivity.
+    - simpl in H0. destruct_ex_conjs H0.
+      exists elem. split; [ | reflexivity ].
+      rewrite <- H5; [ | eapply Some_not_None ]; eassumption.
+  Qed.
+
   (* A write permission is greater than a read permission *)
   Lemma lte_read_write ix pre :
     ixplens_perm_pre Read ix pre <= ixplens_perm_pre Write ix pre.
@@ -115,6 +130,17 @@ Section PLensPerms.
       intro; subst; apply H; reflexivity.
   Qed.
 
+  (* If p is separate from a write perm then it is separate from any rw perm *)
+  Lemma ixplens_sep_write_sep_any p rw ix pre :
+    p ⊥ ixplens_perm_any Write ix -> p ⊥ ixplens_perm_pre rw ix pre.
+  Proof.
+    constructor; intros.
+    - apply (sep_l _ _ H); try assumption.
+      destruct H2 as [? | [? [? ?]]]; subst; [ reflexivity | ].
+      right; split; [ reflexivity | split; assumption ].
+    - apply (sep_r _ _ H); assumption.
+  Qed.
+
 
   (***
    *** Read and write permission sets
@@ -140,7 +166,7 @@ Section PLensPerms.
     eexists; split; [ exists elem; reflexivity | ].
     rewrite (proj2 (prop_Perms_bottom _)); [ | reflexivity ].
     rewrite sep_conj_Perms_commut; rewrite sep_conj_Perms_bottom_identity.
-    apply Proper_singleton_Perms.
+    apply Proper_lte_singleton_Perms.
     constructor; intros.
     - simpl in H0. destruct_ex_conjs H0; subst.
       exists elem. split; [ | reflexivity ].
