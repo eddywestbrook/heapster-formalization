@@ -14,10 +14,11 @@ From ExtLib Require Import
 From Heapster Require Import
      Utils
      Permissions
-     (* PermissionsSpred2 *)
      Memory
      SepStep
-     Typing.
+     Typing
+     LensPerms
+     LifetimePerms.
 
 From ITree Require Import
      ITree
@@ -42,15 +43,21 @@ Section permType.
 
   (** * Permission types *)
 
+  (* A permission type is a relation between an implementation type A and
+     specification type B as a permission set *)
   Record PermType (A B : Type) : Type :=
     { ptApp : A -> B -> @Perms (Si * Ss) }.
+
+  (* A permission type that relates imperative values to specification type A *)
   Definition VPermType A := PermType Value A.
   Notation "xi :: T ▷ xs" := (ptApp _ _ T xi xs) (at level 35).
 
+  (* Add a permission set to a permission type *)
   Definition withPerms {Ai As} (T : PermType Ai As) (P : @Perms (Si * Ss)) : PermType Ai As:=
     {| ptApp:= fun ai abs => (ai :: T ▷ abs) * P |}.
   Notation "T ∅ P" := (withPerms T P) (at level 40).
 
+  (* The sum of two permission types *)
   Definition plusPT {A1 A2 B1 B2}
              (T1 : PermType A1 B1) (T2 : PermType A2 B2) : PermType (A1 + A2) (B1 + B2) :=
     {| ptApp := fun eithA eithB =>
@@ -61,52 +68,73 @@ Section permType.
                   end |}.
   Notation "T1 ⊕ T2" := (plusPT T1 T2) (at level 50).
 
+  (* The product of two permission types *)
   Definition timesPT {A1 A2 B1 B2}
              (T1 : PermType A1 B1) (T2 : PermType A2 B2) : PermType (A1 * A2) (B1 * B2) :=
     {| ptApp := fun a12 b12 => fst a12 :: T1 ▷ fst b12 * snd a12 :: T2 ▷ snd b12 |}.
   Notation "T1 ⊗ T2" := (timesPT T1 T2) (at level 40).
 
+  (* The separating conjunction of two permission types. The permission types
+     both apply to the same implementation value of type Ai, but each relates
+     this value to a different specification value *)
   Definition starPT {Ai As Bs} (T1 : PermType Ai As) (T2 : PermType Ai Bs)
     : PermType Ai (As * Bs) :=
     {| ptApp := fun ai abs => (ai :: T1 ▷ fst abs) * (ai :: T2 ▷ snd abs) |}.
   Notation "T1 ⋆ T2" := (starPT T1 T2) (at level 40).
 
+  (* The existential type, where the existential is in the specification *)
   Definition existsPT {Ai As} {Bs : As -> Type}
              (F : forall a, PermType Ai (Bs a)) : PermType Ai (sigT Bs) :=
     {| ptApp := fun ai abs => ai :: F (projT1 abs) ▷ (projT2 abs) |}.
   Notation "'ex' ( x 'oftype' A ) T" := (existsPT (As:=A) (fun x => T)) (at level 70).
 
+  (* The disjunctive type, where the disjunction is in the specification *)
   Definition or {Ai As Bs} (T1 : PermType Ai As)
              (T2:PermType Ai Bs) : PermType Ai (As + Bs) :=
     {| ptApp := fun ai abs =>
                   sum_rect _ (ptApp _ _ T1 ai) (ptApp _ _ T2 ai) abs |}.
 
+  (* The trivially "true" permission type *)
   Definition trueP {A B} : PermType A B :=
     {| ptApp := fun _ _ => bottom_Perms |}.
+
+  (* The trivially "false" or contradictory permission type *)
   Definition falseP {A B} : PermType A B :=
     {| ptApp := fun _ _ => top_Perms |}.
 
+  (* The permission type stating that an imperative object equals a *)
   Program Definition eqp {A} (a : A): PermType A unit :=
     {| ptApp := fun a' _ => prop_Perms (a = a') |}.
 
+
   (** * Operations used in typing rules *)
 
+  (* The single-element vector *)
   Definition vsingle {A} (a:A) : Vector.t A 1 :=
     Vector.cons _ a _ (Vector.nil _).
 
+  (* If n=0 then return x else return y *)
   Definition ifz {A} n (x y:A) : A :=
     if Nat.eqb n 0 then x else y.
 
+  (* The computation that gets the numeric value of an imperative Value, or
+     throws an error if the Value is not numeric *)
   Definition getNum {S} v : itree (sceE S) nat :=
     match v with VNum n => Ret n | VPtr _ => throw tt end.
 
+  (* The computation that tests if a nullable pointer Value, which is either the
+     numeric value 0 (representing null) or a pointer, is null. It throws an
+     exception if the Value is a not a nullable pointer Value *)
   Definition isNull {S} v: itree (sceE S) bool :=
     match v with
     | VNum n => if Nat.eqb n 0 then Ret true else throw tt
     | VPtr _ => Ret false
     end.
 
+  (* The permission type stating that a Value is numeric, meaning that there
+     exists a numeric value that it is equal to *)
   Definition isNat := ex (n oftype nat) (eqp (VNum n)).
+
 
   (** * Recursive and reachability permissions *)
 
