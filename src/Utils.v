@@ -192,6 +192,29 @@ Next Obligation.
   rewrite lPutPut. rewrite lGetPut. erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
 
+(* An ixplens into the first projection gives an ixplens into a pair type *)
+Global Program Instance IxPLens_fst Ix A B C `{IxPartialLens Ix A C}
+  : IxPartialLens Ix (A * B) C :=
+  {|
+    iget ix x := iget ix (fst x);
+    iput ix x y := (iput ix (fst x) y, snd x);
+  |}.
+Next Obligation.
+  rewrite iGetPut_eq. reflexivity.
+Qed.
+Next Obligation.
+  rewrite iGetPut_neq; try assumption. reflexivity.
+Qed.
+Next Obligation.
+  rewrite iPutGet; [ | assumption ]. reflexivity.
+Qed.
+Next Obligation.
+  rewrite iPutPut_eq. reflexivity.
+Qed.
+Next Obligation.
+  rewrite iPutPut; [ reflexivity | assumption ].
+Qed.
+
 
 (* A set of indices is self-contained iff writing to any index outside the set
    does not affect any index in the set *)
@@ -467,7 +490,17 @@ Definition sceE (C : Type) := (exceptE unit +' modifyE C +' nondetE).
 Definition read {E S} `{modifyE S -< E} : itree E S :=
   trigger (Modify id).
 
+(* The computation that reads an index in the current state *)
+Definition readIx {E S Ix Elem} `{modifyE S -< E} `{IxPartialLens Ix S Elem} (ix : Ix)
+  : itree E (option Elem) :=
+  s <- read;; Ret (iget ix s).
+
 (* The computation that updates the current state by applying a function and
 then returns unit *)
 Definition update {E S} `{modifyE S -< E} (f : S -> S) : itree E unit :=
   _ <- trigger (Modify f);; Ret tt.
+
+(* The computation that sets the value of an index in the current state *)
+Definition setIx {E S Ix Elem} `{modifyE S -< E} `{IxPartialLens Ix S Elem}
+  (ix:Ix) (elem:Elem) : itree E unit :=
+  update (fun s => iput ix s elem).
