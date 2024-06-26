@@ -461,8 +461,7 @@ Section bisim.
     punfold Htyping1. induction Htyping1.
     - do 2 rewritebisim @bind_ret_l. specialize (Htyping2 _ _ _ c1 c2 H1 H H0).
       eapply paco6_mon; eauto.
-    - Locate throw_bind.
-rewrite throw_bind. pstep. constructor.
+    - rewrite throw_bind. pstep. constructor.
     - apply sbuter_gen_pre_inv in Htyping1.
       destruct Htyping1 as [? | [? ?]];
         [ subst; rewrite throw_bind; pstep; constructor | ].
