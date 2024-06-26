@@ -22,6 +22,7 @@ From Paco Require Import
 From ITree Require Import
      ITree
      Eq.Eqit
+     Eq.EqAxiom
      Events.State
      Events.Exception
      Events.Nondeterminism.
@@ -160,6 +161,30 @@ Section bisim.
     inversion 1; auto.
   Qed.
 
+  (* Invert an sbuter with a Tau on the left to remove the Tau *)
+  Lemma sbuter_tau_inv_l {R1 R2} p Q t c1 s c2 :
+    @sbuter R1 R2 p Q (Tau t) c1 s c2 -> sbuter p Q t c1 s c2.
+  Proof.
+    intro. pstep. punfold H.
+    remember (Tau t) as tau_t.
+    induction H; try solve [econstructor; eauto | inversion Heqtau_t ].
+    - inversion Heqtau_t; subst. assumption.
+    - pclearbot. inversion Heqtau_t; subst. punfold H1.
+      apply sbuter_gen_tau_R; assumption.
+  Qed.
+
+  (* Invert an sbuter with a Tau on the right to remove the Tau *)
+  Lemma sbuter_tau_inv_r {R1 R2} p Q t c1 s c2 :
+    @sbuter R1 R2 p Q t c1 (Tau s) c2 -> sbuter p Q t c1 s c2.
+  Proof.
+    intro. pstep. punfold H.
+    remember (Tau s) as tau_s.
+    induction H; try solve [econstructor; eauto | inversion Heqtau_s ].
+    - inversion Heqtau_s; subst. assumption.
+    - pclearbot. inversion Heqtau_s; subst. punfold H1.
+      apply sbuter_gen_tau_L; assumption.
+  Qed.
+
   (* The input permission of sbuter can be strenghtened using sep_step, as long
   as the precondition is preserved *)
   Lemma sbuter_sep_step_left {R1 R2} p p' (Q : R1 -> R2 -> Perms) t s c1 c2 :
@@ -193,6 +218,90 @@ Section bisim.
       + destruct (H1 b1). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
       + destruct (H2 b2). eexists. right. eapply CIH; eauto. pclearbot. apply H3.
   Qed.
+
+  (* sbuter respects itree equality *)
+  Lemma sbuter_eqit {R1 R2} p Q (t1 t2 : itree (sceE config) R1)
+    (s1 s2 : itree (sceE specConfig) R2) c1 c2 :
+    eq_itree eq t1 t2 -> eq_itree eq s1 s2 ->
+    sbuter p Q t1 c1 s1 c2 -> sbuter p Q t2 c1 s2 c2.
+  Proof.
+    revert p Q t1 t2 s1 s2 c1 c2. pcofix CIH.
+    intros p Q t1 t2 s1 s2 c1 c2 Heq_t Heq_s Htyping. revert t2 s2 Heq_t Heq_s.
+    punfold Htyping. induction Htyping; intros.
+    - symmetry in Heq_t; symmetry in Heq_s.
+      apply eqitree_inv_Ret_r in Heq_t; apply eqitree_inv_Ret_r in Heq_s.
+      rewrite (itree_eta_ t2); rewrite (itree_eta_ s2).
+      rewrite Heq_t; rewrite Heq_s.
+      pstep. eapply sbuter_gen_ret; eassumption.
+    - symmetry in Heq_s. apply eqitree_inv_Vis_r in Heq_s.
+      destruct Heq_s as [k' [? ?]]. rewrite (itree_eta_ s2). rewrite H.
+      rewrite throw_vis. pstep. constructor.
+    - pstep. eapply sbuter_gen_sep_step; try eassumption.
+      specialize (IHHtyping _ _ Heq_t Heq_s). pstep_reverse.
+    - symmetry in Heq_t. apply eqitree_inv_Tau_r in Heq_t.
+      destruct Heq_t as [t3 [? ?]]. symmetry in H2.
+      rewrite (itree_eta_ t0). rewrite H1.
+      pstep. apply sbuter_gen_tau_L; try assumption. pstep_reverse.
+    - symmetry in Heq_s; apply eqitree_inv_Tau_r in Heq_s.
+      destruct Heq_s as [t3 [? ?]]. symmetry in H2.
+      rewrite (itree_eta_ s2). rewrite H1.
+      pstep. apply sbuter_gen_tau_R; try assumption. pstep_reverse.
+    - pclearbot.
+      symmetry in Heq_t; apply eqitree_inv_Tau_r in Heq_t.
+      destruct Heq_t as [t3 [? ?]]. symmetry in H3.
+      symmetry in Heq_s; apply eqitree_inv_Tau_r in Heq_s.
+      destruct Heq_s as [s3 [? ?]]. symmetry in H5.
+      rewrite (itree_eta_ t0); rewrite H2.
+      rewrite (itree_eta_ s2); rewrite H4.
+      pstep. apply sbuter_gen_tau; try assumption. right.
+      eapply CIH; eassumption.
+    - symmetry in Heq_t. apply eqitree_inv_Vis_r in Heq_t.
+      destruct Heq_t as [k' [? ?]]. symmetry in H4.
+      rewrite (itree_eta_ t0). rewrite H3.
+      pstep. eapply sbuter_gen_modify_L; try eassumption. pstep_reverse.
+    - symmetry in Heq_s. apply eqitree_inv_Vis_r in Heq_s.
+      destruct Heq_s as [k' [? ?]]. symmetry in H4.
+      rewrite (itree_eta_ s2). rewrite H3.
+      pstep. eapply sbuter_gen_modify_R; try eassumption. pstep_reverse.
+    - pclearbot.
+      symmetry in Heq_t. apply eqitree_inv_Vis_r in Heq_t.
+      destruct Heq_t as [k1' [? ?]]. symmetry in H5.
+      symmetry in Heq_s. apply eqitree_inv_Vis_r in Heq_s.
+      destruct Heq_s as [k2' [? ?]]. symmetry in H7.
+      rewrite (itree_eta_ t2). rewrite H4.
+      rewrite (itree_eta_ s2). rewrite H6.
+      pstep. eapply sbuter_gen_modify; try eassumption.
+      right. eapply CIH; eauto.
+    - symmetry in Heq_t. apply eqitree_inv_Vis_r in Heq_t.
+      destruct Heq_t as [k' [? ?]]. symmetry in H4.
+      rewrite (itree_eta_ t0). rewrite H3.
+      pstep. eapply sbuter_gen_choice_L; try eassumption. intros.
+      pstep_reverse.
+    - symmetry in Heq_s. apply eqitree_inv_Vis_r in Heq_s.
+      destruct Heq_s as [k' [? ?]]. symmetry in H4.
+      rewrite (itree_eta_ s2). rewrite H3.
+      pstep. eapply sbuter_gen_choice_R; try eassumption. intros. pstep_reverse.
+    - pclearbot.
+      symmetry in Heq_t. apply eqitree_inv_Vis_r in Heq_t.
+      destruct Heq_t as [k1' [? ?]]. symmetry in H4.
+      symmetry in Heq_s. apply eqitree_inv_Vis_r in Heq_s.
+      destruct Heq_s as [k2' [? ?]]. symmetry in H6.
+      rewrite (itree_eta_ t2). rewrite H3.
+      rewrite (itree_eta_ s2). rewrite H5.
+      pstep. eapply sbuter_gen_choice; try eassumption; intros.
+      + destruct (H1 b1) as [b2' ?]. pclearbot. eexists. right.
+        eapply CIH; eauto.
+      + destruct (H2 b2) as [b1' ?]. pclearbot. eexists. right.
+        eapply CIH; eauto.
+  Qed.
+
+  (* sbuter respects eutt equality in the implementation itree *)
+  (* FIXME: this should hold, but is complicated to prove
+  Lemma sbuter_eutt_impl {R1 R2} p Q (t1 t2 : itree (sceE config) R1)
+    (s : itree (sceE specConfig) R2) c1 c2 :
+    eutt eq t1 t2 -> sbuter p Q t1 c1 s c2 -> sbuter p Q t2 c1 s c2.
+  Proof.
+   *)
 
   (* The output permission set of sbuter can be weakened by entailment *)
   Lemma sbuter_entails_right {R1 R2} p Q Q' (t : itree (sceE config) R1)
@@ -352,7 +461,8 @@ Section bisim.
     punfold Htyping1. induction Htyping1.
     - do 2 rewritebisim @bind_ret_l. specialize (Htyping2 _ _ _ c1 c2 H1 H H0).
       eapply paco6_mon; eauto.
-    - rewrite throw_bind. pstep. constructor.
+    - Locate throw_bind.
+rewrite throw_bind. pstep. constructor.
     - apply sbuter_gen_pre_inv in Htyping1.
       destruct Htyping1 as [? | [? ?]];
         [ subst; rewrite throw_bind; pstep; constructor | ].
@@ -552,13 +662,15 @@ Section bisim.
   Qed.
 
   (* Typing is Proper wrt permission set equality *)
-  Global Instance Proper_eq_Perms_typing {R1 R2} :
+  Global Instance Proper_eqit_Perms_typing {R1 R2} :
     Proper (eq_Perms ==>
-           (pointwise_relation _ (pointwise_relation _ eq_Perms)) ==> eq ==> eq ==> flip impl) (@typing R1 R2).
+           (pointwise_relation _ (pointwise_relation _ eq_Perms)) ==>
+           eq_itree eq ==> eq_itree eq ==> flip impl) (@typing R1 R2).
   Proof.
-    repeat intro. subst.
-    eapply sbuter_lte.
-    - eapply H3; try eassumption. rewrite <- H; assumption.
-    - intros; apply H0.
+    repeat intro.
+    eapply sbuter_lte; [ | intros; apply H0 ].
+    eapply sbuter_eqit; try (symmetry; eassumption).
+    eapply H3; try eassumption. rewrite <- H. assumption.
   Qed.
+
 End bisim.
