@@ -131,19 +131,36 @@ Section PermType.
      list of specification types Bs as a permission set *)
   Record PermType (A : Type) (Bs : list Type) : Type :=
     { ptApp : A -> tuple Bs -> @Perms (Si * Ss) }.
-  Arguments ptApp {_ _} _ _ _.
 
+  (* Helper function to build a PermType using Perms notation *)
+  (*
+  Definition mkPermType {A Bs} f : PermType A Bs := {| ptApp := f |}.
+  Global Arguments mkPermType {_ _} f%_perms.
+   *)
+  Notation mkPermType f := {| ptApp := f |} (f in scope perms).
+
+  (* Give * for permission sets higher precedence locally than multiplication *)
+  Open Scope perms.
+
+  (* We create a new scope for permission types *)
+  Declare Scope perm_type.
+  Delimit Scope perm_type with perm_type.
+  Bind Scope perm_type with PermType.
+
+  Global Arguments ptApp {_ _} _ _ _.
   Notation "xi :: T ▷ xss" := (ptApp T xi xss) (at level 35).
+
 
   (* A permission type with no specification types *)
   Definition PermType0 A := PermType A [].
 
   (* Make a PermType0 with a fixed permission set for each imperative value *)
   Definition mkPermType0 {A} (P : A -> Perms) : PermType0 A :=
-    {| ptApp := fun a _ => P a |}.
+    mkPermType (fun a _ => P a).
 
   (* A permission type with a single specification type *)
   Definition PermType1 A B := PermType A [B].
+  Bind Scope perm_type with PermType1.
 
   (* Helper function to build a PermType with a single specification type *)
   Definition mkPermType1 {A B} (f : A -> B -> Perms) : PermType1 A B :=
@@ -155,6 +172,28 @@ Section PermType.
     typing P (ptApp U) ti ts.
 
   Notation "P ⊢ ti ⤳ ts ::: U" := (extractsTo P U ti ts) (at level 60).
+
+  (* Map a function across the specification type of a permission type, making
+  permission types a form of functor; note that this mapping is contravariant,
+  meaning that f : B -> C maps permission type with spec type C to B *)
+  Definition mapSpecTp {A Bs Cs} (f:tuple Bs -> tuple Cs) (T:PermType A Cs) : PermType A Bs :=
+    mkPermType (fun a b => a :: T ▷ (f b)).
+
+  (* Mapping the spec type is equivalent to applying the function to xss *)
+  Lemma mapSpecTpEq A Bs Cs f T xi xss :
+    xi :: @mapSpecTp A Bs Cs f T ▷ xss = xi :: T ▷ f xss.
+  Proof. reflexivity. Qed.
+
+  (* Map a function across the implementation type of a permission type, making
+  permission types a form of functor; note that this mapping is contravariant,
+  meaning that f : B -> C maps implementation type with spec type C to B *)
+  Definition mapImpTp {A B Cs} (f:A -> B) (T:PermType B Cs) : PermType A Cs :=
+    mkPermType (fun a b => f a :: T ▷ b).
+
+  (* Mapping the imp type is equivalent to applying the function to xi *)
+  Lemma mapImpTpEq A B Cs f T xi xss :
+    xi :: @mapImpTp A B Cs f T ▷ xss = f xi :: T ▷ xss.
+  Proof. reflexivity. Qed.
 
 
   (***
@@ -178,7 +217,7 @@ Section PermType.
 
   (* Conjoin a fixed permission set with a permission type *)
   Definition withPerms {A Bs} P (T : PermType A Bs) : PermType A Bs :=
-    {| ptApp := fun a b => P * ptApp T a b |}.
+    mkPermType (fun a b => P * a :: T ▷ b).
 
   (* withPerms is equivalent to a conjunction *)
   Lemma withPermsEq A Bs P (T : PermType A Bs) xi xss :
@@ -233,7 +272,7 @@ Section PermType.
                    | (inr a2, inr b2) => a2 :: T2 ▷ b2
                    | _ => top_Perms
                    end).
-  Notation "T1 ⊕ T2" := (sumTp T1 T2) (at level 50).
+  Notation "T1 + T2" := (sumTp T1 T2) : perm_type.
 
   (* The product of two permission types *)
   Definition prodTp {A1 A2 Bs1 Bs2} (T1 : PermType A1 Bs1) (T2 : PermType A2 Bs2)
@@ -241,7 +280,7 @@ Section PermType.
     {| ptApp := fun a12 b12 =>
                   fst a12 :: T1 ▷ fst (splitTuple b12)
                   * snd a12 :: T2 ▷ snd (splitTuple b12) |}.
-  Notation "T1 ⊗ T2" := (prodTp T1 T2) (at level 40).
+  Notation "T1 ⊗ T2" := (prodTp T1 T2) (at level 40) : perm_type.
 
   (* FIXME: intro and elim rules for sums and products *)
 
@@ -257,13 +296,13 @@ Section PermType.
     : PermType Ai (Bs1 ++ Bs2) :=
     {| ptApp := fun ai bs =>
                   (ai :: T1 ▷ fst (splitTuple bs)) * (ai :: T2 ▷ snd (splitTuple bs)) |}.
-  Notation "T1 ⋆ T2" := (starTp T1 T2) (at level 40).
+  Notation "T1 * T2" := (starTp T1 T2) : perm_type.
 
   (* Commutativity for the star type *)
   Lemma starTpCommute Ai Bs1 Bs2
     (T1 : PermType Ai Bs1) (T2 : PermType Ai Bs2) xi xss1 xss2
-    : xi :: (T1 ⋆ T2) ▷ combineTuple xss1 xss2
-        ⊨ xi :: (T2 ⋆ T1) ▷ combineTuple xss2 xss1.
+    : xi :: T1 * T2 ▷ combineTuple xss1 xss2
+        ⊨ xi :: T2 * T1 ▷ combineTuple xss2 xss1.
   Proof.
     simpl. rewrite sep_conj_Perms_commut. repeat rewrite tupleBeta. reflexivity.
   Qed.
@@ -272,8 +311,8 @@ Section PermType.
   Lemma starTpAssoc Ai Bs1 Bs2 Bs3
     (T1 : PermType Ai Bs1) (T2 : PermType Ai Bs2) (T3 : PermType Ai Bs3)
     xi xss1 xss2 xss3
-    : xi :: (T1 ⋆ (T2 ⋆ T3)) ▷ combineTuple xss1 (combineTuple xss2 xss3)
-        ⊨ xi :: ((T1 ⋆ T2) ⋆ T3) ▷ combineTuple (combineTuple xss1 xss2) xss3.
+    : xi :: (T1 * (T2 * T3)) ▷ combineTuple xss1 (combineTuple xss2 xss3)
+        ⊨ xi :: ((T1 * T2) * T3) ▷ combineTuple (combineTuple xss1 xss2) xss3.
   Proof.
     simpl. rewrite sep_conj_Perms_assoc. repeat rewrite tupleBeta. simpl.
     repeat rewrite tupleBeta. reflexivity.
@@ -288,7 +327,8 @@ Section PermType.
   Definition existsTp {Ai As} {Bs : As -> Type}
              (F : forall a, PermType1 Ai (Bs a)) : PermType1 Ai (sigT Bs) :=
     mkPermType1 (fun ai abs => ai :: F (projT1 abs) ▷ (projT2 abs)).
-  Notation "'ex' ( x 'oftype' A ) T" := (existsTp (As:=A) (fun x => T)) (at level 70).
+  Notation "'ex' ( x 'oftype' A ) T" :=
+    (existsTp (As:=A) (fun x => T)) (at level 70) : perm_type.
 
   (* An existential type can be proved from any instance of the existential *)
   Lemma introExistsTp Ai As Bs (F : forall (a:As), PermType1 Ai (Bs a)) xi a xss :
@@ -426,12 +466,6 @@ Section PermType.
       foldUnfold : forall gx, unfoldFP (foldFP gx) = gx;
       unfoldFold : forall x, foldFP (unfoldFP x) = x; }.
 
-  (* "Unmap" a function across the specification of a permission type T,
-     building the permission type that relates a and b whenever a is related to
-     (f b) by T *)
-  Definition unmaprTp {A B C} (f:B -> C) (T:PermType1 A C) : PermType1 A B :=
-    mkPermType1 (fun a b => a :: T ▷ (f b)).
-
   (* A generalization of the least fixed-point type that allows the functor F to
      change the specification type using a type function G, and uses a
      fixed-point X of G as the specification type *)
@@ -439,26 +473,26 @@ Section PermType.
              (F : PermType1 A X -> PermType1 A (G X))
              {prp : Proper (lte_PermType ==> lte_PermType) F}
     : PermType1 A X :=
-    @fixTp A [X] (fun T => unmaprTp unfoldFP (F T)) _.
+    @fixTp A [X] (fun T => mapSpecTp unfoldFP (F T)) _.
   Next Obligation.
     intros T1 T2 leqT a x. simpl. apply prp. assumption.
   Defined.
 
-  (* muTp is a fixed-point wrt unmaprTp *)
+  (* muTp is a fixed-point wrt mapSpecTp *)
   Lemma muTp_fixed_point {A G X} `{FixedPoint G X}
         (F : PermType1 A X -> PermType1 A (G X))
         {prp : Proper (lte_PermType ==> lte_PermType) F} :
-    eq_PermType (muTp F) (unmaprTp unfoldFP (F (muTp F))).
+    eq_PermType (muTp F) (mapSpecTp unfoldFP (F (muTp F))).
   Proof.
-    apply (fixTp_fixed_point (fun T : PermType1 A X => unmaprTp unfoldFP (F T))).
+    apply (fixTp_fixed_point (fun T : PermType1 A X => mapSpecTp unfoldFP (F T))).
   Qed.
 
   Lemma muTp_fixed_point' {A G X} `{FixedPoint G X}
         (F : PermType1 A X -> PermType1 A (G X))
         {prp : Proper (lte_PermType ==> lte_PermType) F} :
-    lte_PermType (unmaprTp unfoldFP (F (muTp F))) (muTp F).
+    lte_PermType (mapSpecTp unfoldFP (F (muTp F))) (muTp F).
   Proof.
-    apply (fixTp_fixed_point (fun T : PermType1 A X => unmaprTp unfoldFP (F T))).
+    apply (fixTp_fixed_point (fun T : PermType1 A X => mapSpecTp unfoldFP (F T))).
   Qed.
 
   (* The functor whose fixed-point generates the list type *)
@@ -488,9 +522,18 @@ Section PermType.
 
 End PermType.
 
+
+(* Re-declaring notations and scopes outside the section *)
+
+Declare Scope perm_type.
+Delimit Scope perm_type with perm_type.
+Bind Scope perm_type with PermType.
+
+Notation mkPermType f := {| ptApp := f |} (f in scope perms).
 Notation "P ⊢ ti ⤳ ts ::: U" := (typing P (@ptApp _ _ _ _ U) ti ts) (at level 60).
 Notation "xi :: T ▷ xs" := (@ptApp _ _ _ _ T xi xs) (at level 35).
-Notation "T1 ⊕ T2" := (@sumTp _ _ _ _ _ _ T1 T2) (at level 50).
-Notation "T1 ⊗ T2" := (@prodTp _ _ _ _ _ _ T1 T2) (at level 40).
-Notation "T1 ⋆ T2" := (@starTp _ _ _ _ _ T1 T2) (at level 40).
-Notation "'ex' ( x 'oftype' A ) T" := (@existsTp _ _ _ A _ (fun x => T)) (at level 70).
+Notation "T1 + T2" := (sumTp T1 T2) : perm_type.
+Notation "T1 ⊗ T2" := (prodTp T1 T2) (at level 40) : perm_type.
+Notation "T1 * T2" := (starTp T1 T2) : perm_type.
+Notation "'ex' ( x 'oftype' A ) T" :=
+  (existsTp (As:=A) (fun x => T)) (at level 70) : perm_type.

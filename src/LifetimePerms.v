@@ -28,6 +28,7 @@ Import ListNotations.
 Section LifetimePerms.
   Context {S : Type}.
   Context `{Hlens: Lens S Lifetimes}.
+  Open Scope perms.
 
   (* Help Coq infer the IxPartialLens for lifetimes in this section *)
   Local Instance IxPartialLens_Lifetimes : IxPartialLens nat S status.

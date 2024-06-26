@@ -63,6 +63,7 @@ Qed.
 (** * Stuttering bisimulation *)
 Section bisim.
   Context {config specConfig : Type}.
+  Open Scope perms.
 
   Inductive sbuter_gen {R1 R2 : Type} (sbuter : perm -> (R1 -> R2 -> Perms) -> itree (sceE config) R1 -> config -> itree (sceE specConfig) R2 -> specConfig -> Prop)
             (p : perm) (Q : R1 -> R2 -> Perms) :

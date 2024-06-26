@@ -1752,6 +1752,13 @@ Section Permissions.
       in_Perms : perm -> Prop;
       Perms_upwards_closed : forall p1 p2, in_Perms p1 -> p1 <= p2 -> in_Perms p2
     }.
+
+  (* Define the scope perms for notations that build Perms sets *)
+  Declare Scope perms.
+  Delimit Scope perms with perms.
+  Bind Scope perms with Perms.
+
+  (* Some nice unicode notation for elements of perm sets *)
   Notation "p ∈ P" := (in_Perms P p) (at level 60).
 
   (* Build a permission set as the upwards closure of a set of permissions *)
@@ -2339,7 +2346,7 @@ Section Permissions.
   Next Obligation.
     exists H, H1. split; [| split; [| split]]; auto. etransitivity; eauto.
   Qed.
-  Notation "P * Q" := (sep_conj_Perms P Q).
+  Notation "P * Q" := (sep_conj_Perms P Q) : perms.
 
   Lemma lte_l_sep_conj_Perms : forall P Q, P ⊑ P * Q.
   Proof.
@@ -2477,9 +2484,9 @@ Section Permissions.
 
   (* The conjunction with a meet is another meet *)
   Lemma sep_conj_Perms_meet_commute (Ps : Perms -> Prop) P :
-    (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = P' * P /\ Ps P').
+    (meet_Perms Ps) * P ≡ meet_Perms (fun Q => exists P', Q = (P' * P)%perms /\ Ps P').
   Proof.
-    unshelve eapply (meet_commutes _ (fun Q => Q * P));
+    unshelve eapply (meet_commutes _ (fun Q => (Q * P)%perms));
       [ intros Q1 Q2 ltQ; apply Proper_lte_Perms_sep_conj_Perms;
         [ assumption | reflexivity ] | ].
     intros. simpl in H; destruct_ex_conjs H; subst.
@@ -2490,7 +2497,7 @@ Section Permissions.
   (* The conjunction of two meets is another meet *)
   Lemma sep_conj_Perms_meet2 (Ps Qs : Perms -> Prop) :
     meet_Perms Ps * meet_Perms Qs
-      ≡ meet_Perms (fun R => exists P Q, R = P * Q /\ Ps P /\ Qs Q).
+      ≡ meet_Perms (fun R => exists P Q, R = (P * Q)%perms /\ Ps P /\ Qs Q).
   Proof.
     split; repeat intro.
     - simpl in H; destruct_ex_conjs H; subst.
@@ -2836,7 +2843,7 @@ Section Permissions.
 
   (* The separating conjunction of unary permission set functions *)
   Definition sep_conj_Perms1 {A B} (P : A -> Perms) (Q : B -> Perms) :=
-    fun ab => P (fst ab) * Q (snd ab).
+    fun ab => (P (fst ab) * Q (snd ab))%perms.
 
   Notation "P *1 Q" := (sep_conj_Perms1 P Q) (at level 40, left associativity).
 
@@ -2857,6 +2864,10 @@ End Permissions.
 
 (* begin hide *)
 (* Redefining notations outside the section. *)
+Declare Scope perms.
+Delimit Scope perms with perms.
+Bind Scope perms with Perms.
+
 Notation "p <= q" := (lte_perm p q).
 Notation "p >= q" := (gte_perm p q).
 Notation "p ≡≡ q" := (eq_perm p q) (at level 50).
@@ -2867,7 +2878,7 @@ Notation "P ⊑ Q" := (lte_Perms P Q) (at level 60).
 Notation "P ⊒ Q" := (gte_Perms P Q) (at level 60).
 Notation "P ≡ Q" := (eq_Perms P Q) (at level 60).
 Notation "P ≡1 Q" := (eq_Perms1 P Q) (at level 60).
-Notation "P * Q" := (sep_conj_Perms P Q).
+Notation "P * Q" := (sep_conj_Perms P Q) : perms.
 Notation "P *1 Q" := (sep_conj_Perms1 P Q) (at level 40, left associativity).
 (*
 Notation "P -⊑- Q" := (forall a, P a ⊑ Q a) (at level 60).

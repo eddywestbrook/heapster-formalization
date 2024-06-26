@@ -29,7 +29,7 @@ Import ListNotations.
 
 Section PLensPerms.
   Context {St Ix Elem} `{IxPLens:IxPartialLens Ix St Elem}.
-
+  Open Scope perms.
 
   (***
    *** Read and write permissions
