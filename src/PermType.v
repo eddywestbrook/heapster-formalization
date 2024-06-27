@@ -32,8 +32,8 @@ From ITree Require Import
 From Paco Require Import
      paco.
 
-Import MonadNotation.
 Import ListNotations.
+Import ITreeNotations.
 
 (* end hide *)
 
@@ -263,28 +263,6 @@ Section PermType.
   Qed.
 
 
-  (* The sum of two permission types *)
-  Definition sumTp {A1 A2 B1 B2} (T1 : PermType1 A1 B1) (T2 : PermType1 A2 B2)
-    : PermType1 (A1 + A2) (B1 + B2) :=
-    mkPermType1 (fun eithA eithB =>
-                   match (eithA, eithB) with
-                   | (inl a1, inl b1) => a1 :: T1 ▷ b1
-                   | (inr a2, inr b2) => a2 :: T2 ▷ b2
-                   | _ => top_Perms
-                   end).
-  Notation "T1 + T2" := (sumTp T1 T2) : perm_type.
-
-  (* The product of two permission types *)
-  Definition prodTp {A1 A2 Bs1 Bs2} (T1 : PermType A1 Bs1) (T2 : PermType A2 Bs2)
-    : PermType (A1 * A2) (Bs1 ++ Bs2) :=
-    {| ptApp := fun a12 b12 =>
-                  fst a12 :: T1 ▷ fst (splitTuple b12)
-                  * snd a12 :: T2 ▷ snd (splitTuple b12) |}.
-  Notation "T1 ⊗ T2" := (prodTp T1 T2) (at level 40) : perm_type.
-
-  (* FIXME: intro and elim rules for sums and products *)
-
-
   (***
    *** The separating conjunction permission type
    ***)
@@ -320,7 +298,55 @@ Section PermType.
 
 
   (***
-   *** The existential and disjunctive permission types
+   *** Permission type constructors that operate on both spec and impl types
+   ***)
+
+  (* The sum of two permission types *)
+  Definition sumTp {A1 A2 B1 B2} (T1 : PermType1 A1 B1) (T2 : PermType1 A2 B2)
+    : PermType1 (A1 + A2) (B1 + B2) :=
+    mkPermType1 (fun eithA eithB =>
+                   match (eithA, eithB) with
+                   | (inl a1, inl b1) => a1 :: T1 ▷ b1
+                   | (inr a2, inr b2) => a2 :: T2 ▷ b2
+                   | _ => top_Perms
+                   end).
+  Notation "T1 + T2" := (sumTp T1 T2) : perm_type.
+
+  (* The left introduction rule for sum types *)
+  Lemma introSumTpL {A1 A2 B1 B2} (T1 : PermType1 A1 B1) (T2 : PermType1 A2 B2) xi xs :
+    xi :: T1 ▷ xs ⊨ inl xi :: T1 + T2 ▷ inl xs.
+  Proof. reflexivity. Qed.
+
+  (* The right introduction rule for sum types *)
+  Lemma introSumTpR {A1 A2 B1 B2} (T1 : PermType1 A1 B1) (T2 : PermType1 A2 B2) xi xs :
+    xi :: T2 ▷ xs ⊨ inr xi :: T1 + T2 ▷ inr xs.
+  Proof. reflexivity. Qed.
+
+  (* The elimination rule for sum types relates pattern-matches on both sides *)
+  Lemma elimSumTp {Ai Bi As Bs Ri Rss} (T1 : PermType1 Ai As) (T2 : PermType1 Bi Bs)
+    (U : PermType Ri Rss) xi ti1 ti2 xs ts1 ts2 :
+    (forall xi1 xs1, xi1 :: T1 ▷ xs1 ⊢ ti1 xi1 ⤳ ts1 xs1 ::: U) ->
+    (forall xi2 xs2, xi2 :: T2 ▷ xs2 ⊢ ti2 xi2 ⤳ ts2 xs2 ::: U) ->
+    xi :: T1 + T2 ▷ xs ⊢ sum_rect _ ti1 ti2 xi ⤳ sum_rect _ ts1 ts2 xs ::: U.
+  Proof.
+    intros; destruct xi; destruct xs; simpl;
+      solve [apply typing_top | apply H | apply H0].
+  Qed.
+
+
+  (* The product of two permission types *)
+  Definition prodTp {A1 A2 Bs1 Bs2} (T1 : PermType A1 Bs1) (T2 : PermType A2 Bs2)
+    : PermType (A1 * A2) (Bs1 ++ Bs2) :=
+    {| ptApp := fun a12 b12 =>
+                  fst a12 :: T1 ▷ fst (splitTuple b12)
+                  * snd a12 :: T2 ▷ snd (splitTuple b12) |}.
+  Notation "T1 ⊗ T2" := (prodTp T1 T2) (at level 40) : perm_type.
+
+  (* FIXME: intro and elim rules for products *)
+
+
+  (***
+   *** Permission type constructors that operate on spec types
    ***)
 
   (* The existential type, where the existential is in the specification *)
@@ -368,14 +394,38 @@ Section PermType.
 
 
   (***
-   *** The existential and disjunctive permission types
+   *** Permission type constructors that operate on impl types
    ***)
 
   (* The permission type stating that an imperative object equals a *)
-  Program Definition eqTp {A} (a : A): PermType0 A :=
-    mkPermType0 (fun a' => prop_Perms (a = a')).
+  Definition eqTp {A} (a : A): PermType0 A :=
+    mkPermType0 (fun a' => prop_Perms (a' = a)).
 
   (* FIXME: add rules for eqTp *)
+
+
+  (* Permission type stating that an optional implementation value is a Some
+  value that relates to the specification value via the supplied T *)
+  Definition someImplTp {Ai Bss} (T : PermType Ai Bss) : PermType (option Ai) Bss :=
+    mkPermType (fun opt_xi xss =>
+                  match opt_xi with
+                  | Some xi => xi :: T ▷ xss
+                  | None => top_Perms
+                  end).
+
+  (* Some introduction rule for optionImplTp *)
+  Lemma introSomeImplTp Ai Bss T xi xss :
+    xi :: T ▷ xss ⊨ Some xi :: @someImplTp Ai Bss T ▷ xss.
+  Proof. reflexivity. Qed.
+
+  (* Elimination rule for optionImplTp has a getOpt in the implementation *)
+  Lemma elimSomeImplTp Ai Bss T Ri Rss (U : PermType Ri Rss) opt_xi xss ti ts :
+      (forall xi, xi :: T ▷ xss ⊢ ti xi ⤳ ts ::: U) ->
+      opt_xi :: @someImplTp Ai Bss T ▷ xss ⊢ (xi <- getOpt opt_xi;; ti xi) ⤳ ts ::: U.
+  Proof.
+    intro. destruct opt_xi; [ | apply typing_top ]. simpl.
+    unfold extractsTo. rewrite bind_ret_l. apply H.
+  Qed.
 
 
   (***

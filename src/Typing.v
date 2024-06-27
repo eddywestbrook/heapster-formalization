@@ -395,6 +395,13 @@ Section bisim.
     repeat intro. eapply sbuter_bottom; eauto.
   Qed.
 
+  (* Typing with meet on the left can be proved with universal quantification *)
+  Lemma typing_meet {R1 R2} Ps Q t s :
+    (forall P, Ps P -> @typing R1 R2 P Q t s) ->
+    typing (meet_Perms Ps) Q t s.
+  Proof.
+    repeat intro. destruct H0 as [P [? ?]]. apply (H P H0 p); assumption.
+  Qed.
 
   (* Reading the state on the left is bisimilar to the trivial computation on
   the right relative to any input permission set P with output permission set
@@ -671,6 +678,21 @@ Section bisim.
     eapply sbuter_lte; [ | intros; apply H0 ].
     eapply sbuter_eqit; try (symmetry; eassumption).
     eapply H3; try eassumption. rewrite <- H. assumption.
+  Qed.
+
+  (* Typing is Proper wrt entailment *)
+  Global Instance Proper_ent_Perms_typing {R1 R2} :
+    Proper (entails_Perms ==>
+              (pointwise_relation _ (pointwise_relation _ entails_Perms)) -->
+              eq ==> eq ==> flip impl) (@typing R1 R2).
+  Proof.
+    repeat intro; subst.
+    destruct (H p H4) as [q [? ?]].
+    assert (inv q (c1, c2) /\ pre q (c1, c2)) as [? ?];
+      [ apply (entails_pred _ _ H2); split; eassumption | ].
+    eapply sbuter_entails_left; try eassumption.
+    eapply sbuter_entails_right; [ | apply H0 ].
+    apply H3; assumption.
   Qed.
 
 End bisim.

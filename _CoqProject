@@ -6,6 +6,7 @@ src/SepStep.v
 src/Typing.v
 src/PermType.v
 src/LensPerms.v
+src/LensTypes.v
 src/Lifetime.v
 src/LifetimePerms.v
 

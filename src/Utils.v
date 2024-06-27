@@ -490,20 +490,24 @@ Definition sceE (C : Type) := (exceptE unit +' modifyE C +' nondetE).
 Definition read {E S} `{modifyE S -< E} : itree E S :=
   trigger (Modify id).
 
-(* The computation that reads an index in the current state, throwing an error
-   if that index does not exist *)
-Definition readIx {E S Ix Elem} `{modifyE S -< E} `{exceptE unit -< E}
-  `{IxPartialLens Ix S Elem} (ix : Ix) : itree E Elem :=
-  s <- read;;
-  match iget ix s with
-    | Some elem => Ret elem
-    | None => throw tt
-  end.
-
 (* The computation that updates the current state by applying a function and
 then returns unit *)
 Definition update {E S} `{modifyE S -< E} (f : S -> S) : itree E unit :=
   _ <- trigger (Modify f);; Ret tt.
+
+(* The computation that gets the value of an option, throwing an exception if it
+has none *)
+Definition getOpt {E A} `{exceptE unit -< E} (opt_a: option A) : itree E A :=
+  match opt_a with
+  | Some a => Ret a
+  | None => throw tt
+  end.
+
+(* The computation that reads an index in the current state, throwing an error
+   if that index does not exist *)
+Definition readIx {E S Ix Elem} `{modifyE S -< E} `{exceptE unit -< E}
+  `{IxPartialLens Ix S Elem} (ix : Ix) : itree E Elem :=
+  s <- read;; getOpt (iget ix s).
 
 (* The computation that sets the value of an index in the current state *)
 Definition setIx {E S Ix Elem} `{modifyE S -< E} `{IxPartialLens Ix S Elem}
