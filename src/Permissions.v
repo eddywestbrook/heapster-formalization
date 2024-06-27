@@ -556,21 +556,23 @@ Section Permissions.
     set_pre_perm (fun y => exists z, y = f z /\ inv p z /\ pre p z) q.
 
   (* rewind is Proper wrt the permission ordering *)
-  Global Instance Proper_lte_rewind_perm f :
-    Proper (lte_perm ==> lte_perm ==> lte_perm) (rewind_perm f).
+  Global Instance Proper_lte_rewind_perm :
+    Proper (pointwise_relation _ eq ==>
+              lte_perm ==> lte_perm ==> lte_perm) rewind_perm.
   Proof.
-    intros p1 p2 Rp q1 q2 Rq.
+    intros f1 f2 eqf p1 p2 Rp q1 q2 Rq.
     apply Proper_lte_set_pre_perm; try assumption.
     repeat intro. destruct H0 as [z [? [? ?]]]; subst.
-    exists z; split; [ reflexivity | split ]; apply Rp; assumption.
+    exists z; split; [ symmetry; apply eqf | split ]; apply Rp; assumption.
   Qed.
 
   (* rewing is Proper wrt permission equality *)
-  Global Instance Proper_eq_rewind_perm f :
-    Proper (eq_perm ==> eq_perm ==> eq_perm) (rewind_perm f).
+  Global Instance Proper_eq_rewind_perm :
+    Proper (pointwise_relation _ eq ==>
+              eq_perm ==> eq_perm ==> eq_perm) rewind_perm.
   Proof.
-    intros p1 p2 [? ?] q1 q2 [? ?].
-    split; apply Proper_lte_rewind_perm; assumption.
+    intros f1 f2 eqf p1 p2 [? ?] q1 q2 [? ?].
+    split; apply Proper_lte_rewind_perm; try assumption. symmetry; assumption.
   Qed.
 
   (* The guarantee of a rewind is the same as that of its RHS permission *)
@@ -2262,19 +2264,22 @@ Section Permissions.
   Definition rewind f P : Perms := mapPerms (rewind_same_perm f) P.
 
   (* rewind is monotonic wrt the permission set ordering *)
-  Global Instance Proper_lte_rewind f :
-    Proper (lte_Perms ==> lte_Perms) (rewind f).
+  Global Instance Proper_lte_rewind :
+    Proper (pointwise_relation _ eq ==> lte_Perms ==> lte_Perms) rewind.
   Proof.
-    repeat intro. simpl in H0; destruct_ex_conjs H0; subst.
-    eexists; split; [ | apply H2 ]. eexists; split; [ | reflexivity ].
-    apply H; assumption.
+    repeat intro. simpl in H1; destruct_ex_conjs H1; subst.
+    unfold rewind_same_perm in H3. rewrite <- H in H3.
+    eexists; split; [ | apply H3 ].
+    eexists; split; [ | reflexivity ].
+    apply H0; assumption.
   Qed.
 
   (* rewind is Proper wrt permission set equality *)
-  Global Instance Proper_eq_rewind f :
-    Proper (eq_Perms ==> eq_Perms) (rewind f).
+  Global Instance Proper_eq_rewind :
+    Proper (pointwise_relation _ eq ==> eq_Perms ==> eq_Perms) rewind.
   Proof.
-    intros P1 P2 [? ?]; split; apply Proper_lte_rewind; assumption.
+    intros f1 f2 eqf P1 P2 [? ?]; split; apply Proper_lte_rewind; try assumption.
+    symmetry; assumption.
   Qed.
 
 
@@ -2541,7 +2546,7 @@ Section Permissions.
     rewind f (singleton_Perms p) ≡ singleton_Perms (rewind_perm f p p).
   Proof.
     apply (map_singleton_Perms (fun _ => _)).
-    repeat intro. apply Proper_lte_rewind_perm; assumption.
+    repeat intro. unfold rewind_same_perm. rewrite H. reflexivity.
   Qed.
 
   (* The rewind_conj of singletons is a singleton of a rewind_perm *)
@@ -2556,7 +2561,7 @@ Section Permissions.
       split; [ assumption | reflexivity ].
     - simpl in H0. destruct_ex_conjs H0; subst. simpl.
       etransitivity; [ | eassumption ].
-      apply Proper_lte_rewind_perm; [ | assumption ].
+      apply Proper_lte_rewind_perm; [ reflexivity | | assumption ].
       apply sep_conj_perm_monotone_sep; assumption.
   Qed.
 
@@ -2576,11 +2581,12 @@ Section Permissions.
       + apply separate_rewind. symmetry. apply separate_rewind. symmetry. assumption.
     - etransitivity; [ | apply p_in ].
       transitivity (rewind_perm f (x0 ** x1) (x0 ** x1));
-        [ | apply Proper_lte_rewind_perm; assumption ].
+        [ | apply Proper_lte_rewind_perm; try reflexivity; assumption ].
       etransitivity; [ | apply rewind_perm_conj ].
       apply sep_conj_perm_monotone_sep.
       + repeat (apply separate_rewind; symmetry). assumption.
-      + apply Proper_lte_rewind_perm; [ apply lte_l_sep_conj_perm | reflexivity ].
+      + apply Proper_lte_rewind_perm;
+          [ reflexivity | apply lte_l_sep_conj_perm | reflexivity ].
       + reflexivity.
   Qed.
 
@@ -2613,7 +2619,7 @@ Section Permissions.
       [ apply separate_antimonotone; assumption | ].
     assert (x0 ⊥ invperm (inv x1) ** x3);
       [ apply separate_antimonotone; assumption | ].
-    rewrite <- (Proper_lte_rewind_perm f _ _ H10 _ _ H9).
+    rewrite <- (Proper_lte_rewind_perm f f (reflexivity _) _ _ H10 _ _ H9).
     rewrite rewind_perm_conj.
     exists (rewind_perm f (x0 ** (invperm (inv x1) ** x2)) (invperm (inv x1) ** x2)).
     exists (rewind_perm f (x0 ** (invperm (inv x1) ** x3)) (invperm (inv x1) ** x3)).
@@ -2626,12 +2632,12 @@ Section Permissions.
       split; [ assumption | reflexivity ].
     - apply sep_conj_perm_monotone_sep.
       + apply separate_rewind. symmetry; apply separate_rewind. symmetry. assumption.
-      + apply Proper_lte_rewind_perm; [ | reflexivity ].
+      + apply Proper_lte_rewind_perm; try reflexivity.
         apply sep_conj_perm_monotone_sep; [ assumption | reflexivity | ].
         apply sep_conj_perm_monotone_sep;
           [ apply separate_bigger_invperm; assumption | reflexivity | ].
         apply lte_l_sep_conj_perm.
-      + apply Proper_lte_rewind_perm; [ | reflexivity ].
+      + apply Proper_lte_rewind_perm; try reflexivity.
         apply sep_conj_perm_monotone_sep; [ assumption | reflexivity | ].
         apply sep_conj_perm_monotone_sep;
           [ apply separate_bigger_invperm; assumption | reflexivity | ].
