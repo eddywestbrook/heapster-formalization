@@ -453,6 +453,7 @@ Proof.
       apply le_n_S. assumption.
 Qed.
 
+(* The set of indices above a fixed nat n is self-contained *)
 Lemma self_contained_list_ixs {A} n : self_contained_ixs (B:=A) (fun i => i >= n).
 Proof.
   repeat intro. simpl. revert n ix_in ix_out H H0; induction st; intros.
@@ -472,6 +473,92 @@ Proof.
       apply (IHst n).
       * apply le_S_n. assumption.
       * intro. apply H0. apply le_n_S. assumption.
+Qed.
+
+
+(* NOTE: I did all this work on ModSets and now I don't even need them, but I
+don't want to just throw this away, so I'm leaving it here for now... *)
+
+(* A pair of nats (i,n) where i < n that represents the set of all natural
+numbers k such that k%n = i *)
+Inductive ModSet : Set := | mkModSet i n (pf : i < n).
+
+(* An element is a ModSet is a k such that k%n = i *)
+Definition inModSet (ms : ModSet) k : Prop :=
+  match ms with
+  | mkModSet i n pf => exists j, i + n*j = k
+  end.
+
+(* The complete ModSet is (0,1) *)
+Program Definition completeModSet : ModSet := mkModSet 0 1 _.
+
+(* Proof that the complete ModSet is complete *)
+Lemma completeModSet_in k : inModSet completeModSet k.
+Proof. simpl. exists k. auto. Qed.
+
+(* Get the least element of a ModSet *)
+Definition ModSet_elem (ms : ModSet) : nat :=
+  match ms with
+  | mkModSet i n pf => i
+  end.
+
+(* The least element of a ModSet is always in the ModSet *)
+Lemma ModSet_elem_in ms : inModSet ms (ModSet_elem ms).
+Proof.
+  destruct ms. simpl. exists 0. rewrite Nat.mul_comm. auto.
+Qed.
+
+(* Any ModSet (i,n) can be split into (i, 2*n) and (i+n, 2*n) *)
+Program Definition ModSet_split (ms : ModSet) : ModSet * ModSet :=
+  match ms with
+  | mkModSet i n pf => (mkModSet i (2*n) _, mkModSet (i+n) (2*n) _)
+  end.
+Next Obligation.
+  rewrite (Nat.add_comm n 0). simpl.
+  eapply Nat.lt_le_trans; [ eassumption | ].
+  transitivity (0 + n); [ reflexivity | ]. apply Nat.add_le_mono_r.
+  apply Nat.le_0_l.
+Qed.
+Next Obligation.
+  rewrite (Nat.add_comm n 0). simpl.
+  apply Nat.add_lt_mono_r. assumption.
+Qed.
+
+(* The LHS of a ModSet_split is a subset of the original ModSet *)
+Lemma ModSet_split_in_l ms ix : inModSet (fst (ModSet_split ms)) ix -> inModSet ms ix.
+Proof.
+  destruct ms. simpl. intros [j ?]. subst. exists (2*j).
+  rewrite Nat.mul_assoc. rewrite (Nat.mul_comm n 2). simpl. reflexivity.
+Qed.
+
+(* The RHS of a ModSet_split is a subset of the original ModSet *)
+Lemma ModSet_split_in_r ms ix : inModSet (snd (ModSet_split ms)) ix -> inModSet ms ix.
+Proof.
+  destruct ms. simpl. intros [j ?]. subst. exists (1 + 2*j).
+  rewrite <- (Nat.add_assoc i n). f_equal.
+  rewrite Nat.mul_add_distr_l.
+  rewrite Nat.mul_1_r. f_equal.
+  rewrite Nat.mul_assoc. rewrite (Nat.mul_comm n 2). reflexivity.
+Qed.
+
+(* The split of a ModSet yields two disjoint sets *)
+Lemma ModSet_split_disj ms ix :
+  inModSet (fst (ModSet_split ms)) ix -> ~ inModSet (snd (ModSet_split ms)) ix.
+Proof.
+  destruct ms. intros [j1 ?] [j2 ?]. subst.
+  rewrite (Nat.add_comm (i+n)) in H0.
+  rewrite (Nat.add_comm i (_ * j1)) in H0.
+  apply Nat.div_mod_unique in H0.
+  - destruct H0. symmetry in H0. apply (Nat.lt_irrefl i).
+    assert (i < i + n) as H1; [ | rewrite <- H0 in H1; assumption ].
+    eapply (Nat.le_lt_trans _ (i+i)).
+    + transitivity (0+i); [ reflexivity | ].
+      apply Nat.add_le_mono_r. apply Nat.le_0_l.
+    + apply Nat.add_lt_mono_l. assumption.
+  - simpl. rewrite Nat.add_0_r. apply Nat.add_lt_mono_r. assumption.
+  - eapply Nat.lt_le_trans; [ eassumption | ].
+    transitivity (1*n); [ rewrite Nat.mul_1_l; reflexivity | ].
+    apply Nat.mul_le_mono_nonneg_r; [ apply Nat.le_0_l | repeat constructor ].
 Qed.
 
 
