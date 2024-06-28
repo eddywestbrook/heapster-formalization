@@ -124,9 +124,9 @@ Section PLensPerms.
   Proof.
     constructor; intros.
     - destruct H2 as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
-      intro; symmetry; apply iGetPut_neq; assumption.
+      intro; symmetry; apply iGetPut_neq1; assumption.
     - destruct H2 as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
-      intro; symmetry; apply iGetPut_neq; try assumption.
+      intro; symmetry; apply iGetPut_neq1; try assumption.
       intro; subst; apply H; reflexivity.
   Qed.
 
@@ -217,8 +217,11 @@ Section PLensPerms.
 
 
   (***
-   *** Multi-write permissions = allocation permission
+   *** Multi-write permissions
    ***)
+
+  (* NOTE: I'm not sure we still need multi-write permissions, but we are
+  keeping them in case they're useful later *)
 
   (* The permission to write to any index in a set *)
   Program Definition ixplens_multi_write_perm (ixs : Ix -> Prop) : @perm St :=
@@ -265,7 +268,7 @@ Section PLensPerms.
         [ | assumption ].
       induction H1.
       + destruct H as [ix' [elem [? ?]]]; subst.
-        rewrite iGetPut_neq;
+        rewrite iGetPut_neq1;
           [ split; [ reflexivity | assumption ] | | assumption ].
         intro; subst. apply (not_in H).
       + split; [ reflexivity | assumption ].
@@ -278,26 +281,25 @@ Section PLensPerms.
 
   (* Helper lemma for ixplens_multi_write_split_write *)
   Lemma ixplens_multi_write_split_write_step ixs ix pre :
-    self_contained_ixs ixs ->
     sep_step (ixplens_multi_write_perm (eq ix \1/ ixs))
       (ixplens_perm_pre Write ix pre ** ixplens_multi_write_perm ixs).
   Proof.
     intros; apply sep_step_rg; intros.
     - apply I.
-    - clear H0. induction H1; [ | etransitivity; eassumption ].
-      destruct H0.
-      + destruct H0 as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
+    - clear H. induction H0; [ | etransitivity; eassumption ].
+      destruct H.
+      + destruct H as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
         apply rt_step; exists ix; exists elem.
         split; [ left | ]; reflexivity.
-      + induction H0.
-        * destruct H0 as [ix' [elem [? ?]]]; subst.
+      + induction H.
+        * destruct H as [ix' [elem [? ?]]]; subst.
           apply rt_step. exists ix'; exists elem.
           split; [ right; assumption | reflexivity ].
         * reflexivity.
         * etransitivity; eassumption.
     - split.
-      + intro. apply H1. left; reflexivity.
-      + repeat intro. apply H1. right; assumption.
+      + intro. apply H0. left; reflexivity.
+      + repeat intro. apply H0. right; assumption.
   Qed.
 
   (* A multi-write permission can be split into a write and a smaller
@@ -381,6 +383,150 @@ Section PLensPerms.
     - intros. split; [ | simpl; trivial ].
       split; [ | split ]; try apply I.
       apply ixplens_multi_write_multi_write_sep; assumption.
+  Qed.
+
+
+  (***
+   *** Allocation permissions
+   ***)
+
+  Context {IxA:@IxAlloc _ _ _ IxPLens}.
+
+  (* The permission to allocate any index starting at ix, assuming that ix
+  is the next index to be allocated *)
+  Program Definition ixplens_alloc_perm ix : @perm St :=
+    {|
+      pre x := iallocIx x = ix;
+      rely x y :=
+        (forall ix', iallocLater ix ix' -> iget ix' x = iget ix' y) /\
+          iallocIx x = iallocIx y;
+      guar x y :=
+        clos_refl_trans _ (fun x' y' =>
+                             exists ix' elem, iallocLater ix ix' /\ y' = iput ix' x' elem) x y;
+      inv x := True;
+    |}.
+  Next Obligation.
+    constructor; repeat intro.
+    - split; intros; reflexivity.
+    - split; intros; (etransitivity; [ eapply H | eapply H0 ]; eassumption).
+  Qed.
+
+  (* The allocation permission is separate from any read/write permission with
+  an already-allocated index *)
+  Lemma ixplens_alloc_rw_sep rw ix pre ix_alloc :
+    ~ iallocLater ix_alloc ix ->
+    ixplens_perm_pre rw ix pre ⊥ ixplens_alloc_perm ix_alloc.
+  Proof.
+    intros not_later; constructor; repeat intro.
+    - clear H H0.
+      assert (iget ix x = iget ix y /\ iget ix y <> None) as [? ?];
+        [ | assumption ].
+      induction H1.
+      + destruct H as [ix' [elem [? ?]]]; subst.
+        rewrite iGetPut_neq1;
+          [ split; [ reflexivity | assumption ] | | assumption ].
+        intro; subst. apply not_later; assumption.
+      + split; [ reflexivity | assumption ].
+      + destruct (IHclos_refl_trans1 H2).
+        destruct (IHclos_refl_trans2 H0).
+        split; [ etransitivity | ]; eassumption.
+    - destruct H1 as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ]. split.
+      + intros. symmetry; apply iGetPut_neq2; [ | assumption ].
+        intro; subst. apply not_later; assumption.
+      + symmetry; apply iallocIx_eq. intro.
+        rewrite iallocIx_none in H2; [ | assumption ]. eauto.
+  Qed.
+
+
+  (* Helper lemma for list_alloc_split_write: an allocation permission for ix
+  sep-steps to an allocation permission for the next index after ix and a write
+  permission to ix *)
+  Lemma ixplens_alloc_split_write_step ix pre :
+    sep_step (ixplens_alloc_perm ix)
+      (ixplens_perm_pre Write ix pre ** ixplens_alloc_perm (inextIx ix)).
+  Proof.
+    apply sep_step_rg; intros.
+    - apply I.
+    - clear H. induction H0; [ | etransitivity; eassumption ].
+      destruct H.
+      + destruct H as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
+        apply rt_step; exists ix; exists elem.
+        split; reflexivity.
+      + induction H.
+        * destruct H as [ix' [elem [? ?]]]; subst.
+          apply rt_step. exists ix'; exists elem.
+          split; [ | reflexivity ].
+          etransitivity; [ | eassumption ].
+          apply inextIxLater.
+        * reflexivity.
+        * etransitivity; eassumption.
+    - destruct H0. split; [ | split ].
+      + intro. apply H0. reflexivity.
+      + intros. apply H0. etransitivity; [ apply inextIxLater | eassumption ].
+      + assumption.
+  Qed.
+
+  (* An allocation permission for ix can be split into an allocation permission
+  for the next index and a write permission to ix after a write to ix *)
+  Lemma ixplens_alloc_split_write_perm ix elem :
+    rewind_perm (fun x => iput ix x elem)
+      (ixplens_alloc_perm ix) (ixplens_alloc_perm ix)
+      ⊢ ixplens_perm_eq Write ix elem ** ixplens_alloc_perm (inextIx ix).
+  Proof.
+    intros; apply sep_step_entails_perm.
+    - etransitivity; [ apply set_pre_sep_step
+                     | apply ixplens_alloc_split_write_step; assumption ].
+    - intros. simpl in H. destruct_ex_conjs H; subst.
+      split; [ | split ].
+      + repeat (split; [ apply I | ]).
+        apply ixplens_alloc_rw_sep. apply inextIxNotEarlier.
+      + eexists; split; [ | reflexivity ]. rewrite <- H4; [ | reflexivity ].
+        apply iGetPut_eq.
+      + simpl. rewrite <- H6. apply inextAlloc_eq.
+  Qed.
+
+
+  (***
+   *** The allocation permission set
+   ***)
+
+  (* The allocation permission set is the set of all allocation permissions *)
+  Definition ixplens_alloc :=
+    meet_Perms (fun R => exists ix, R = singleton_Perms (ixplens_alloc_perm ix)).
+
+  (* After reading what the next allocation index is, the allocation permission
+  set can be coerced to the allocation permission with that specific index *)
+  Lemma ixplens_alloc_read_ent pred ix :
+    (forall x, pred x -> iallocIx x = ix) ->
+    add_poss_pre pred ixplens_alloc ⊨ singleton_Perms (ixplens_alloc_perm ix).
+  Proof.
+    intro. apply add_poss_pre_meet_ent. intros. destruct H0 as [elem ?]; subst.
+    apply Perms_field_singleton_elim in H1. destruct H1.
+    simpl in H0. apply H in H2. subst.
+    apply add_pre_ent_P.
+  Qed.
+
+  (* After allocating an index, we get back a write permission to that index
+  along with a further allocation permission *)
+  Lemma ixplens_alloc_write_ent ix elem :
+    rewind (fun x => iput ix x elem) (singleton_Perms (ixplens_alloc_perm ix))
+      ⊨ ixplens_dep Write ix (fun e => prop_Perms (e = elem)) * ixplens_alloc.
+  Proof.
+    unfold ixplens_dep. rewrite sep_conj_Perms_meet_commute.
+    apply ent_meet_Perms. eexists.
+    split; [ eexists; split; [ reflexivity | exists elem; reflexivity ] | ].
+    rewrite (proj2 (prop_Perms_bottom _)); [ | reflexivity ].
+    rewrite (sep_conj_Perms_commut _ bottom_Perms).
+    rewrite sep_conj_Perms_bottom_identity.
+    unfold ixplens_alloc.
+    rewrite sep_conj_Perms_commut. rewrite sep_conj_Perms_meet_commute.
+    apply ent_meet_Perms. eexists.
+    split; [ eexists; split; [ reflexivity | exists (inextIx ix); reflexivity ] | ].
+    rewrite sep_conj_Perms_commut.
+    rewrite sep_conj_singleton;
+      [ | apply ixplens_alloc_rw_sep; apply inextIxNotEarlier ].
+    rewrite rewind_singleton. apply entails_singleton_Perms.
+    apply ixplens_alloc_split_write_perm.
   Qed.
 
 End PLensPerms.

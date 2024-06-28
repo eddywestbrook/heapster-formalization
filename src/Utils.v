@@ -140,8 +140,11 @@ Class IxPartialLens (Ix A B : Type) : Type :=
     iget : Ix -> A -> option B;
     iput : Ix -> A -> B -> A;
     iGetPut_eq : forall i a b, iget i (iput i a b) = Some b;
-    iGetPut_neq : forall i1 i2 a b,
+    iGetPut_neq1 : forall i1 i2 a b,
       i1 <> i2 -> iget i1 a <> None ->
+      iget i1 (iput i2 a b) = iget i1 a;
+    iGetPut_neq2 : forall i1 i2 a b,
+      i1 <> i2 -> iget i2 a <> None ->
       iget i1 (iput i2 a b) = iget i1 a;
     iPutGet : forall i a b, iget i a = Some b -> iput i a b = a;
     iPutPut_eq : forall i a b, iput i (iput i a b) b = iput i a b;
@@ -167,7 +170,9 @@ Global Program Instance IxPartialLens_option A : IxPartialLens unit (option A) A
 Next Obligation.
   exfalso. apply H. destruct i1; destruct i2; reflexivity.
 Qed.
-
+Next Obligation.
+  exfalso; apply H. destruct i1; destruct i2. reflexivity.
+Qed.
 
 (* A Lens can be composed with an indexed partial lens *)
 Global Program Instance Lens_IxPartialLens Ix A B C `{Lens A B} `{IxPartialLens Ix B C} :
@@ -180,7 +185,10 @@ Next Obligation.
   rewrite lGetPut. apply iGetPut_eq.
 Qed.
 Next Obligation.
-  rewrite lGetPut. eapply iGetPut_neq; eassumption.
+  rewrite lGetPut. eapply iGetPut_neq1; eassumption.
+Qed.
+Next Obligation.
+  rewrite lGetPut. eapply iGetPut_neq2; eassumption.
 Qed.
 Next Obligation.
   rewrite iPutGet; [ | assumption ]. apply lPutGet.
@@ -203,7 +211,10 @@ Next Obligation.
   rewrite iGetPut_eq. reflexivity.
 Qed.
 Next Obligation.
-  rewrite iGetPut_neq; try assumption. reflexivity.
+  rewrite iGetPut_neq1; try assumption. reflexivity.
+Qed.
+Next Obligation.
+  rewrite iGetPut_neq2; try assumption. reflexivity.
 Qed.
 Next Obligation.
   rewrite iPutGet; [ | assumption ]. reflexivity.
@@ -277,10 +288,21 @@ Next Obligation.
   - exfalso; auto.
   - destruct (iget i a); simpl in H5;
       [ | exfalso; auto ].
-    rewrite iGetPut_eq. simpl. eapply iGetPut_neq; eassumption.
+    rewrite iGetPut_eq. simpl. eapply iGetPut_neq1; eassumption.
   - case_eq (iget i1 a); intros; rewrite H6 in H5; simpl in H5;
       [ | exfalso; auto ].
-    erewrite iGetPut_neq; try rewrite H6;
+    erewrite iGetPut_neq1; try rewrite H6;
+      [ reflexivity | assumption | intro; discriminate ].
+Qed.
+Next Obligation.
+  destruct (dec_eq i1 i); [ destruct (dec_eq i2 i0) | ]; subst.
+  - exfalso; auto.
+  - destruct (iget i a); simpl in H5;
+      [ | exfalso; auto ].
+    rewrite iGetPut_eq. simpl. eapply iGetPut_neq2; eassumption.
+  - case_eq (iget i a); intros; rewrite H6 in H5; simpl in H5;
+      [ | exfalso; auto ].
+    erewrite iGetPut_neq2; try rewrite H6;
       [ reflexivity | assumption | intro; discriminate ].
 Qed.
 Next Obligation.
@@ -299,6 +321,38 @@ Next Obligation.
   erewrite iPutPut; [ | rewrite H4; intro; discriminate ].
   erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
+
+
+(***
+ *** Indexed partial lenses with allocation
+ ***)
+
+Class IxAlloc `{IxPLens : IxPartialLens} : Type :=
+  {
+    (* A PreOrder on indices that will be allocated later than others such that
+       sets of later indices are always self-contained; this ensures that
+       writing to already-allocated indices does not accidentally allocate *)
+    iallocLater : Ix -> Ix -> Prop;
+    PreOrder_iallocLater :: PreOrder iallocLater;
+    iallocLater_self_contained : forall ix, self_contained_ixs (iallocLater ix);
+
+    (* The next index to allocate in a state; every index later than it
+       (including itself) is currerntly unallocated, and it cannot be affected by
+       setting anything not later than it *)
+    iallocIx : A -> Ix;
+    iallocIx_none : forall a ix, iallocLater (iallocIx a) ix ->
+                                 iget ix a = None;
+    iallocIx_eq : forall ix a b, ~ iallocLater (iallocIx a) ix ->
+                                 iallocIx (iput ix a b) = iallocIx a;
+
+    (* The next index to allocate after an index ix is allocated, which maps any
+       ix to the next index to allocate after ix has been assigned *)
+    inextIx : Ix -> Ix;
+    inextAlloc_eq : forall a b,
+      iallocIx (iput (iallocIx a) a b) = inextIx (iallocIx a);
+    inextIxLater : forall ix, iallocLater ix (inextIx ix);
+    inextIxNotEarlier : forall ix, ~ iallocLater (inextIx ix) ix;
+  }.
 
 
 (***
@@ -397,6 +451,16 @@ Proof.
   - f_equal. apply IHl. apply PeanoNat.lt_S_n. assumption.
 Qed.
 
+Lemma replace_list_index_None_length A n (l : list A) (a : A) :
+  n >= length l ->
+  length (replace_list_index l n a) = S n.
+Proof.
+  revert n; induction l; intros; destruct n.
+  - reflexivity.
+  - simpl. rewrite repeat_length. f_equal. apply Nat.add_1_r.
+  - inversion H.
+  - simpl in H. apply le_S_n in H. simpl. f_equal. apply IHl. assumption.
+Qed.
 
 (* List indexing is an indexed partial lens *)
 Global Program Instance IxPartialLens_list A : IxPartialLens nat (list A) A :=
@@ -413,6 +477,15 @@ Next Obligation.
   - destruct i2; [ exfalso; apply H; reflexivity | ].
     simpl; reflexivity.
   - destruct i2; [ simpl; reflexivity | ]. apply IHa.
+    + intro; subst. apply H; reflexivity.
+    + apply H0.
+Qed.
+Next Obligation.
+  revert i1 i2 H H0; induction a; intros; [ | destruct i2 ].
+  - destruct i2; simpl in H0; exfalso; auto.
+  - destruct i1; [ exfalso; apply H; reflexivity | ].
+    simpl; reflexivity.
+  - destruct i1; [ simpl; reflexivity | ]. apply IHa.
     + intro; subst. apply H; reflexivity.
     + apply H0.
 Qed.

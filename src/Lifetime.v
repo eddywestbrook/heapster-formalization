@@ -255,7 +255,7 @@ Definition subsumes n1 n2 x1 x2 :=
     repeat intro. unfold lifetime, replace_lifetime. destruct (Nat.eq_dec l0 l).
     - subst. rewrite iGetPut_eq. assumption.
     - case_eq (iget l0 st); intros; [ | apply I ].
-      erewrite iGetPut_neq; try rewrite H2;
+      erewrite iGetPut_neq1; try rewrite H2;
         [ reflexivity | assumption | intro; discriminate ].
   Qed.
 
@@ -295,7 +295,7 @@ Definition subsumes n1 n2 x1 x2 :=
     - unfold lifetime, replace_lifetime.
       rewrite iGetPut_eq.
       assert (iget l' st = Some finished); [ apply H0; assumption | ].
-      erewrite iGetPut_neq; try rewrite H2;
+      erewrite iGetPut_neq1; try rewrite H2;
         [ reflexivity | assumption | intro; discriminate ].
   Qed.
 
