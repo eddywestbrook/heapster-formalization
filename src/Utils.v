@@ -332,26 +332,25 @@ Class IxAlloc `{IxPLens : IxPartialLens} : Type :=
     (* A PreOrder on indices that will be allocated later than others such that
        sets of later indices are always self-contained; this ensures that
        writing to already-allocated indices does not accidentally allocate *)
-    iallocLater : Ix -> Ix -> Prop;
-    PreOrder_iallocLater :: PreOrder iallocLater;
-    iallocLater_self_contained : forall ix, self_contained_ixs (iallocLater ix);
+    ilater : Ix -> Ix -> Prop;
+    PreOrder_ilater :: PreOrder ilater;
+    ilater_self_contained : forall ix, self_contained_ixs (ilater ix);
 
     (* The next index to allocate in a state; every index later than it
        (including itself) is currerntly unallocated, and it cannot be affected by
        setting anything not later than it *)
-    iallocIx : A -> Ix;
-    iallocIx_none : forall a ix, iallocLater (iallocIx a) ix ->
-                                 iget ix a = None;
-    iallocIx_eq : forall ix a b, ~ iallocLater (iallocIx a) ix ->
-                                 iallocIx (iput ix a b) = iallocIx a;
+    ialloc : A -> Ix;
+    ialloc_none : forall a ix, ilater (ialloc a) ix -> iget ix a = None;
+    ialloc_eq : forall ix a b, ~ ilater (ialloc a) ix ->
+                               ialloc (iput ix a b) = ialloc a;
 
     (* The next index to allocate after an index ix is allocated, which maps any
        ix to the next index to allocate after ix has been assigned *)
-    inextIx : Ix -> Ix;
+    inext : Ix -> Ix;
     inextAlloc_eq : forall a b,
-      iallocIx (iput (iallocIx a) a b) = inextIx (iallocIx a);
-    inextIxLater : forall ix, iallocLater ix (inextIx ix);
-    inextIxNotEarlier : forall ix, ~ iallocLater (inextIx ix) ix;
+      ialloc (iput (ialloc a) a b) = inext (ialloc a);
+    inextLater : forall ix, ilater ix (inext ix);
+    inextNotEarlier : forall ix, ~ ilater (inext ix) ix;
   }.
 
 
