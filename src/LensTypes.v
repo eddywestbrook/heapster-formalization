@@ -76,3 +76,44 @@ Section PLensTypes.
       + repeat intro. reflexivity.
       + reflexivity.
   Qed.
+
+
+  (***
+   *** The allocation permission type
+   ***)
+
+  Context {IxA:@IxAlloc _ _ _ IxPLens}.
+
+  (* The allocation permission type relates the unit implementation value to no
+  specification values *)
+  Definition ixplensAllocTp : @PermType0 Si Ss unit :=
+    mkPermType0 (fun _ => ixplens_alloc).
+
+  (* To extract a spec from an implementation starting with an allocation,
+  perform extraction for the rest of the implementation after the allocation
+  using an arbitrary index for the allocated index *)
+  Lemma ixplensAlloc elem Ri Rss ti ts (U : PermType Ri Rss) :
+    (forall ix, (ix :: ixplensTp Write (eqTp elem) ▷ tt * tt :: ixplensAllocTp ▷ tt)
+                  ⊢ ti ix ⤳ ts ::: U) ->
+    tt :: ixplensAllocTp ▷ tt ⊢ (ix <- allocIx elem;; ti ix) ⤳ ts ::: U.
+  Proof.
+    intro. unfold allocIx. simpl.
+    rewrite <- (bind_ret_l tt (fun _ => ts)).
+    eapply typing_bind; [ | intros; apply H ]. simpl.
+    rewrite <- (bind_ret_l tt (fun _ => Ret tt)).
+    eapply typing_bind; [ apply typing_read_L | ]. intros. simpl.
+    rewrite (ixplens_alloc_read_ent _ (ialloc r1));
+      [ | intros; subst; reflexivity ].
+    rewrite <- (bind_ret_l tt (fun _ => Ret tt)).
+    eapply typing_bind; [ apply typing_update_L | ].
+    - intros. simpl in H0. apply H0; [ assumption | ].
+      apply Relation_Operators.rt_step.
+      exists (ialloc r1); exists elem. split; [ reflexivity | ].
+      unfold map_pair_L. cbn. f_equal.
+    - intros. apply typing_ret.
+      etransitivity; [ | eapply ixplens_alloc_write_ent ].
+      apply bigger_Perms_entails. eapply Proper_lte_rewind; [ | reflexivity ].
+      intro. reflexivity.
+  Qed.
+
+End PLensTypes.

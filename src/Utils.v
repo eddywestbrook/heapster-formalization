@@ -160,6 +160,41 @@ Proof.
   apply iPutPut. rewrite iGetPut_eq. intro; discriminate.
 Qed.
 
+(* A set of indices is self-contained iff writing to any index outside the set
+   does not affect any index in the set *)
+Definition self_contained_ixs `{IxPartialLens} (ixs : Ix -> Prop) : Prop :=
+  forall st ix_in ix_out elem,
+    ixs ix_in -> ~ ixs ix_out ->
+    iget ix_in (iput ix_out st elem) = iget ix_in st.
+
+
+(* Indexed partial lenses that support a notion of index allocation *)
+Class IxAlloc Ix A B `{IxPLens : IxPartialLens Ix A B} : Type :=
+  {
+    (* A PreOrder on indices that will be allocated later than others such that
+       sets of later indices are always self-contained; this ensures that
+       writing to already-allocated indices does not accidentally allocate *)
+    ilater : Ix -> Ix -> Prop;
+    PreOrder_ilater :: PreOrder ilater;
+    ilater_self_contained : forall ix, self_contained_ixs (ilater ix);
+
+    (* The next index to allocate in a state; every index later than it
+       (including itself) is currerntly unallocated, and it cannot be affected by
+       setting anything not later than it *)
+    ialloc : A -> Ix;
+    ialloc_none : forall a ix, ilater (ialloc a) ix -> iget ix a = None;
+    ialloc_eq : forall ix a b, ~ ilater (ialloc a) ix ->
+                               ialloc (iput ix a b) = ialloc a;
+
+    (* The next index to allocate after an index ix is allocated, which maps any
+       ix to the next index to allocate after ix has been assigned *)
+    inext : Ix -> Ix;
+    inextAlloc_eq : forall a b,
+      ialloc (iput (ialloc a) a b) = inext (ialloc a);
+    inextLater : forall ix, ilater ix (inext ix);
+    inextNotEarlier : forall ix, ~ ilater (inext ix) ix;
+  }.
+
 
 (* The option type is a trivial partial lens *)
 Global Program Instance IxPartialLens_option A : IxPartialLens unit (option A) A :=
@@ -173,6 +208,7 @@ Qed.
 Next Obligation.
   exfalso; apply H. destruct i1; destruct i2. reflexivity.
 Qed.
+
 
 (* A Lens can be composed with an indexed partial lens *)
 Global Program Instance Lens_IxPartialLens Ix A B C `{Lens A B} `{IxPartialLens Ix B C} :
@@ -199,6 +235,34 @@ Qed.
 Next Obligation.
   rewrite lPutPut. rewrite lGetPut. erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
+
+(* A lens can be composed with an index allocation scheme *)
+Global Program Instance Lens_IxAlloc Ix A B C `{Lens A B} `{IxAlloc Ix B C} :
+  IxAlloc Ix A C :=
+  {|
+    ilater ix1 ix2 := ilater ix1 ix2;
+    ialloc a := ialloc (lget a);
+    inext ix := inext ix;
+  |}.
+Next Obligation.
+  repeat intro. cbn. rewrite lGetPut. eapply ilater_self_contained; eassumption.
+Qed.
+Next Obligation.
+  apply ialloc_none. assumption.
+Qed.
+Next Obligation.
+  rewrite lGetPut. apply ialloc_eq. assumption.
+Qed.
+Next Obligation.
+  rewrite lGetPut. apply inextAlloc_eq.
+Qed.
+Next Obligation.
+  apply inextLater.
+Qed.
+Next Obligation.
+  apply inextNotEarlier.
+Qed.
+
 
 (* An ixplens into the first projection gives an ixplens into a pair type *)
 Global Program Instance IxPLens_fst Ix A B C `{IxPartialLens Ix A C}
@@ -227,12 +291,34 @@ Next Obligation.
 Qed.
 
 
-(* A set of indices is self-contained iff writing to any index outside the set
-   does not affect any index in the set *)
-Definition self_contained_ixs `{IxPartialLens} (ixs : Ix -> Prop) : Prop :=
-  forall st ix_in ix_out elem,
-    ixs ix_in -> ~ ixs ix_out ->
-    iget ix_in (iput ix_out st elem) = iget ix_in st.
+(* An index allocation for the first projection gives an index allocation scheme
+for a pair type *)
+Global Program Instance IxAlloc_fst Ix A B C `{IxAlloc Ix A C}
+  : IxAlloc Ix (A * B) C :=
+  {|
+    ilater := ilater;
+    ialloc x := ialloc (fst x);
+    inext := inext;
+  |}.
+Next Obligation.
+  repeat intro. cbn. eapply ilater_self_contained; eassumption.
+Qed.
+Next Obligation.
+  apply ialloc_none. assumption.
+Qed.
+Next Obligation.
+  apply ialloc_eq. assumption.
+Qed.
+Next Obligation.
+  apply inextAlloc_eq.
+Qed.
+Next Obligation.
+  apply inextLater.
+Qed.
+Next Obligation.
+  apply inextNotEarlier.
+Qed.
+
 
 (* Types with a default element *)
 Class Default (A:Type) := default_elem : A.
@@ -321,37 +407,6 @@ Next Obligation.
   erewrite iPutPut; [ | rewrite H4; intro; discriminate ].
   erewrite iPutPut; [ reflexivity | eassumption ].
 Qed.
-
-
-(***
- *** Indexed partial lenses with allocation
- ***)
-
-Class IxAlloc `{IxPLens : IxPartialLens} : Type :=
-  {
-    (* A PreOrder on indices that will be allocated later than others such that
-       sets of later indices are always self-contained; this ensures that
-       writing to already-allocated indices does not accidentally allocate *)
-    ilater : Ix -> Ix -> Prop;
-    PreOrder_ilater :: PreOrder ilater;
-    ilater_self_contained : forall ix, self_contained_ixs (ilater ix);
-
-    (* The next index to allocate in a state; every index later than it
-       (including itself) is currerntly unallocated, and it cannot be affected by
-       setting anything not later than it *)
-    ialloc : A -> Ix;
-    ialloc_none : forall a ix, ilater (ialloc a) ix -> iget ix a = None;
-    ialloc_eq : forall ix a b, ~ ilater (ialloc a) ix ->
-                               ialloc (iput ix a b) = ialloc a;
-
-    (* The next index to allocate after an index ix is allocated, which maps any
-       ix to the next index to allocate after ix has been assigned *)
-    inext : Ix -> Ix;
-    inextAlloc_eq : forall a b,
-      ialloc (iput (ialloc a) a b) = inext (ialloc a);
-    inextLater : forall ix, ilater ix (inext ix);
-    inextNotEarlier : forall ix, ~ ilater (inext ix) ix;
-  }.
 
 
 (***
@@ -548,6 +603,31 @@ Proof.
 Qed.
 
 
+(* Getting the next index is an allocation scheme for list indices *)
+Global Program Instance IxAlloc_list A : @IxAlloc nat (list A) A _ :=
+  {|
+    ilater := le;
+    ialloc l := length l;
+    inext i := S i;
+  |}.
+Next Obligation.
+  apply self_contained_list_ixs.
+Qed.
+Next Obligation.
+  apply nth_error_None. assumption.
+Qed.
+Next Obligation.
+  symmetry; apply replace_list_index_length.
+  apply Nat.nle_gt; assumption.
+Qed.
+Next Obligation.
+  apply replace_list_index_None_length. unfold ge; reflexivity.
+Qed.
+Next Obligation.
+  apply Nat.lt_nge. unfold lt. reflexivity.
+Qed.
+
+
 (* NOTE: I did all this work on ModSets and now I don't even need them, but I
 don't want to just throw this away, so I'm leaving it here for now... *)
 
@@ -672,3 +752,8 @@ Definition readIx {E S Ix Elem} `{modifyE S -< E} `{exceptE unit -< E}
 Definition setIx {E S Ix Elem} `{modifyE S -< E} `{IxPartialLens Ix S Elem}
   (ix:Ix) (elem:Elem) : itree E unit :=
   update (fun s => iput ix s elem).
+
+(* The computation that allocates a new index, assigning it an initial value *)
+Definition allocIx {E S Ix Elem} `{modifyE S -< E} `{IxAlloc Ix S Elem}
+  (elem:Elem) : itree E Ix :=
+  s <- read;; _ <- setIx (ialloc s) elem;; Ret (ialloc s).
