@@ -2475,6 +2475,14 @@ Section Permissions.
     apply sep_conj_Perms_assoc_lte.
   Qed.
 
+  (* Swap the second and third conjuncts in a nested conjunction *)
+  Lemma sep_conj_Perms_assoc_swap P Q R : (P * Q) * R ≡ (P * R) * Q.
+  Proof.
+    rewrite <- (sep_conj_Perms_assoc P Q).
+    rewrite (sep_conj_Perms_commut Q R).
+    apply (sep_conj_Perms_assoc P R).
+  Qed.
+
   (* Helper lemma to distribute conjunctions over each other *)
   Lemma sep_conj_Perms_distrib P1 P2 Q1 Q2 :
     eq_Perms ((P1 * P2) * (Q1 * Q2)) ((P1 * Q1) * (P2 * Q2)).
@@ -2497,6 +2505,17 @@ Section Permissions.
     intros. simpl in H; destruct_ex_conjs H; subst.
     eexists; split; [ | eassumption ].
     eexists; eexists. repeat (split; [ eassumption | ]). assumption.
+  Qed.
+
+  (* The conjunction with a meet on the right is another meet *)
+  Lemma sep_conj_Perms_meet_r_commute (Ps : Perms -> Prop) P :
+    P * (meet_Perms Ps) ≡ meet_Perms (fun Q => exists P', Q = (P * P')%perms /\ Ps P').
+  Proof.
+    rewrite sep_conj_Perms_commut. rewrite sep_conj_Perms_meet_commute.
+    split; apply meet_Perms_max; intros Q H; destruct_ex_conjs H; subst;
+      apply lte_meet_Perms; eexists;
+      (split; [ eexists; split; [ reflexivity | eassumption ]
+              | rewrite sep_conj_Perms_commut; reflexivity ]).
   Qed.
 
   (* The conjunction of two meets is another meet *)
