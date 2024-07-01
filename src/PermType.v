@@ -133,11 +133,9 @@ Section PermType.
     { ptApp : A -> tuple Bs -> @Perms (Si * Ss) }.
 
   (* Helper function to build a PermType using Perms notation *)
-  (*
   Definition mkPermType {A Bs} f : PermType A Bs := {| ptApp := f |}.
   Global Arguments mkPermType {_ _} f%_perms.
-   *)
-  Notation mkPermType f := {| ptApp := f |} (f in scope perms).
+  (* Notation mkPermType f := {| ptApp := f |} (f in scope perms). *)
 
   (* Give * for permission sets higher precedence locally than multiplication *)
   Open Scope perms.
@@ -579,7 +577,7 @@ Declare Scope perm_type.
 Delimit Scope perm_type with perm_type.
 Bind Scope perm_type with PermType.
 
-Notation mkPermType f := {| ptApp := f |} (f in scope perms).
+(* Notation mkPermType f := {| ptApp := f |} (f in scope perms). *)
 Notation "P ⊢ ti ⤳ ts ::: U" := (typing P (@ptApp _ _ _ _ U) ti ts) (at level 60).
 Notation "xi :: T ▷ xs" := (@ptApp _ _ _ _ T xi xs) (at level 35).
 Notation "T1 + T2" := (sumTp T1 T2) : perm_type.
