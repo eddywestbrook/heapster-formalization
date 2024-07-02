@@ -9,7 +9,6 @@ From ITree Require Import
 From Heapster Require Import
      Utils
      Permissions
-     Lifetime
      SepStep
      Typing
      PermType

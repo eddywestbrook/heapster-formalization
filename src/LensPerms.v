@@ -12,7 +12,6 @@ From Coq Require Import
 From Heapster Require Import
      Utils
      Permissions
-     Lifetime
      SepStep
      Typing.
 
