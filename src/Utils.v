@@ -160,6 +160,13 @@ Proof.
   apply iPutPut. rewrite iGetPut_eq. intro; discriminate.
 Qed.
 
+
+(* A lens and an ixplens are separate iff putting to one cannot affect the other *)
+Class LensIxPLensSep {A B1} (Lens:Lens A B1) {Ix B2} (IxPLens: IxPartialLens Ix A B2) : Prop :=
+  { lens_ixplens_sep1 : forall a b ix, iget ix (lput a b) = iget ix a;
+    lens_ixplens_sep2 : forall a b ix, lget (iput ix a b) = lget a; }.
+
+
 (* A set of indices is self-contained iff writing to any index outside the set
    does not affect any index in the set *)
 Definition self_contained_ixs `{IxPartialLens} (ixs : Ix -> Prop) : Prop :=
@@ -317,6 +324,18 @@ Next Obligation.
 Qed.
 Next Obligation.
   apply inextNotEarlier.
+Qed.
+
+(* If a lens and an ixplens are separate then they remain separate when they are
+lifted to the first projection of a pair *)
+Global Program Instance LensIxPLensSep_fst A B C1 (Lens: Lens A C1)
+  Ix C2 (IxPLens : IxPartialLens Ix A C2) (sep : LensIxPLensSep Lens IxPLens) :
+  LensIxPLensSep (@Lens_fst _ _ _ Lens) (@IxPLens_fst _ _ B _ IxPLens).
+Next Obligation.
+  apply lens_ixplens_sep1.
+Qed.
+Final Obligation.
+  apply lens_ixplens_sep2.
 Qed.
 
 

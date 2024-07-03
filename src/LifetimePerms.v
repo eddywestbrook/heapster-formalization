@@ -27,12 +27,12 @@ Import ListNotations.
 
 Section LifetimePerms.
   Context {S : Type}.
-  Context `{Hlens: Lens S Lifetimes}.
+  Context `{LtLens: Lens S Lifetimes}.
   Open Scope perms.
 
   (* Help Coq infer the IxPartialLens for lifetimes in this section *)
   Local Instance IxPartialLens_Lifetimes : IxPartialLens nat S status.
-  Proof. unfold Lifetimes in Hlens. typeclasses eauto. Defined.
+  Proof. unfold Lifetimes in LtLens. typeclasses eauto. Defined.
 
   (* Permission to allocate lifetimes with index >= n *)
   Definition lalloc_perm (n : nat) : @perm S :=
@@ -1129,22 +1129,9 @@ Section LifetimePerms.
   Qed.
 
 
-(* End LifetimePerms. *)
-
-
-(***
- *** Lifetime typing rules
- ***)
-
-(*
-Section LifetimeRules.
-  (*
-  Context {Si Ss : Type}.
-  Context `{Hlens: Lens Si Lifetimes}.
-   *)
-  Context {S : Type}.
-  Context `{Hlens: Lens S Lifetimes}.
-*)
+  (***
+   *** Lifetime typing rules
+   ***)
 
   (* Permissions P that are only active during lifetime l *)
   Definition when l P : Perms := mapPerms (when_perm l) P.
@@ -1554,6 +1541,26 @@ Section LifetimeRules.
     rewrite sep_conj_Perms_assoc.
     rewrite (H2 _). rewrite rewind_lt_gte_P.
     rewrite sep_conj_Perms_commut. apply H.
+  Qed.
+
+
+  (***
+   *** Lifetimes with indexed partial lenses
+   ***)
+
+  (* If an ixplens is separate from the lifetimes lens then all of its
+  permissions are separate from all the lowned permissions *)
+  Lemma sep_ixplens_sep_lowned {Ix Elem} `{IxPLens:IxPartialLens Ix S Elem}
+    `{Sep:@LensIxPLensSep _ _ LtLens _ _ IxPLens} rw ix pre l ls :
+    ixplens_perm_pre rw ix pre ⊥ lowned_perm l ls.
+  Proof.
+    symmetry; apply ixplens_sep_write_sep_any. constructor; intros.
+    - destruct H1 as [? | [? [? [elem ?]]]]; subst; [ reflexivity | ].
+      simpl; unfold ltset_lte. cbn. rewrite lens_ixplens_sep2.
+      split; [ reflexivity | ]. intros; reflexivity.
+    - destruct H1 as [? | [? ?]]; subst; [ reflexivity | ].
+      intro. unfold end_lifetime, replace_lifetime, iput. simpl.
+      rewrite lens_ixplens_sep1. reflexivity.
   Qed.
 
   (* A dependent read/write ixplens permission that is in a lifetime. Note that
