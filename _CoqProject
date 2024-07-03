@@ -9,6 +9,7 @@ src/LensPerms.v
 src/LensTypes.v
 src/Lifetime.v
 src/LifetimePerms.v
+src/LifetimeTypes.v
 
 src/Memory.v
 # src/MemoryPerms.v
