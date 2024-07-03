@@ -41,6 +41,7 @@ Definition statusOf_lte (s1 s2 : option status) : Prop :=
   | Some _, None => False
   | _, _ => True
   end.
+Arguments statusOf_lte _ _ : simpl nomatch.
 
 (* statusOf_lte is a preorder *)
 Global Instance statusOf_lte_preorder : PreOrder statusOf_lte.
@@ -274,13 +275,42 @@ Definition subsumes n1 n2 x1 x2 :=
   Qed.
 
 
+  (* All the lifetimes in a set have not gone backwards in going between two
+  states *)
+  Definition ltset_lte (ls : nat -> Prop) st1 st2 : Prop :=
+    forall l, ls l -> statusOf_lte (lifetime st1 l) (lifetime st2 l).
+
+  (* ltset_lte is a PreOrder *)
+  Global Instance PreOrder_ltset_lte ls : PreOrder (ltset_lte ls).
+  Proof.
+    constructor; repeat intro.
+    - reflexivity.
+    - etransitivity; [ apply H0 | apply H1 ]; assumption.
+  Qed.
+
+  (* All lifetimes in the empty set are always lte *)
+  Lemma ltset_lte_empty st1 st2 : ltset_lte (fun _ => False) st1 st2.
+  Proof. repeat intro. inversion H0. Qed.
+
+
   (* l is lte all lifetimes in a set, i.e., it subsumes them *)
   Definition all_lte l (ls : nat -> Prop) st : Prop :=
     forall l', ls l' -> statusOf_lte (lifetime st l) (lifetime st l').
 
-  (* l is lte all lifetimes in the emptty set *)
+  (* l is lte all lifetimes in the empty set *)
   Lemma all_lte_empty l st : all_lte l (fun _ : nat => False) st.
   Proof. repeat intro; exfalso; assumption. Qed.
+
+  (* If the status of l does not change and all lifetimes in ls do not go
+  backwards, then all_lte l ls is preserved *)
+  Lemma all_lte_preserved l ls st1 st2 :
+    lifetime st1 l = lifetime st2 l -> ltset_lte ls st1 st2 ->
+    all_lte l ls st1 -> all_lte l ls st2.
+  Proof.
+    repeat intro. rewrite <- H0.
+    etransitivity; [ apply H2 | apply H1 ]; assumption.
+  Qed.
+
 
   (* All lifetimes in a set are finished *)
   Definition all_finished (ls : nat -> Prop) st : Prop :=

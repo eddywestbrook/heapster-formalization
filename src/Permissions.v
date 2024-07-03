@@ -441,6 +441,11 @@ Section Permissions.
     constructor; simpl; intros; apply lte_invperm; apply H.
   Qed.
 
+  (* The guarantee of an invperm is the same as bottom *)
+  Lemma guar_eq_invperm_bottom pred : guar_eq (invperm pred) bottom_perm.
+  Proof. intros x y. reflexivity. Qed.
+
+
   (* The permission with only a precondition, that is otherwise bottom *)
   Program Definition preperm (pred : config -> Prop) : perm :=
     {|
@@ -450,6 +455,26 @@ Section Permissions.
       inv x := True
     |}.
 
+  (* The permission with only a rely, that is otherwise bottom *)
+  Program Definition relyperm rel `{PreOrder _ rel} : perm :=
+    {|
+      pre x := True;
+      rely := rel;
+      guar := eq;
+      inv x := True
+    |}.
+
+  (* An invperm is less than or equal to any p with a stronger invariant *)
+  Lemma lte_relyperm rel `{PreOrder _ rel} p :
+    (forall x y, inv p x -> rely p x y -> rel x y) -> relyperm rel <= p.
+  Proof.
+    constructor; intros; simpl; auto.
+    - simpl in H2. subst; reflexivity.
+  Qed.
+
+  (* The guarantee of a relyperm is the same as bottom *)
+  Lemma guar_eq_relyperm_bottom rel `{PreOrder _ rel} : guar_eq (relyperm rel) bottom_perm.
+  Proof. intros x y. reflexivity. Qed.
 
   (* Set the precondition to a permission, closed under that permission's rely *)
   Program Definition set_pre_perm (pred : config -> Prop) p :=
@@ -996,11 +1021,20 @@ Section Permissions.
   (*   intros. red in H. split; auto. *)
   (* Qed. *)
 
+  (* If two permissions have trivial guarantees then they are separate *)
+  Lemma sep_guar_eq_bottom2 p q :
+    guar_eq p bottom_perm -> guar_eq q bottom_perm -> p ⊥ q.
+  Proof.
+    constructor; intros.
+    - assert (x = y); [ apply H0; assumption | subst; reflexivity ].
+    - assert (x = y); [ apply H; assumption | subst; reflexivity ].
+  Qed.
+
   (* If the guarantee of q is equality then p is separate from q if the
      guarantee of p satisfies the rely of q *)
   Lemma sep_guar_eq_bottom p q :
     guar_eq q bottom_perm ->
-    (forall x y, inv q x -> guar p x y -> rely q x y) ->
+    (forall x y, inv p x -> inv q x -> guar p x y -> rely q x y) ->
     separate p q.
   Proof.
     constructor; intros.
@@ -1025,6 +1059,23 @@ Section Permissions.
     apply separate_invperm; intros. simpl in H1; subst. assumption.
   Qed.
 
+  (* All invperms and relyperms are separate from each other *)
+  Lemma separate_invperm_relyperm pred rel `{PreOrder _ rel} :
+    invperm pred ⊥ relyperm rel.
+  Proof.
+    apply sep_guar_eq_bottom2; [ apply guar_eq_invperm_bottom
+                               | apply guar_eq_relyperm_bottom ].
+  Qed.
+
+  (* All relyperms are separate from each other *)
+  Lemma separate_relyperm_relyperm rel1 rel2 `{PreOrder _ rel1} `{PreOrder _ rel2} :
+    relyperm rel1 ⊥ relyperm rel2.
+  Proof.
+    apply sep_guar_eq_bottom2; [ apply guar_eq_relyperm_bottom
+                               | apply guar_eq_relyperm_bottom ].
+  Qed.
+
+
   (* All invperms are self-separate *)
   Lemma self_sep_invperm pred : invperm pred ⊥ invperm pred.
   Proof. apply separate_invperm_invperm. Qed.
@@ -1044,6 +1095,17 @@ Section Permissions.
     eapply inv_guar; [ | eassumption ].
     eapply guar_inc; eassumption.
   Qed.
+
+  (* If the guarantee of p satisfies rel then p _|_ relyperm rel *)
+  Lemma separate_relyperm p rel `{PreOrder _ rel} :
+    (forall x y, inv p x -> guar p x y -> rel x y) ->
+    separate p (relyperm rel).
+  Proof.
+    intro. constructor; simpl; intros.
+    - subst; reflexivity.
+    - eapply H0; eassumption.
+  Qed.
+
 
   (* Setting a precondition preserves separateness *)
   Lemma separate_set_pre pred p q : p ⊥ q <-> set_pre_perm pred p ⊥ q.
@@ -1117,6 +1179,14 @@ Section Permissions.
     repeat intro; split; intros; eapply clos_trans_incl; try apply H1;
       intros; destruct H2;
       try (left; apply H; assumption); right; apply H0; assumption.
+  Qed.
+
+  Lemma sep_conj_bottom_guar_eq p : guar_eq (bottom_perm ** p) p.
+  Proof.
+    split; intros.
+    - simpl in H. rewrite clos_trans_eq_or in H; [ | typeclasses eauto ].
+      rewrite clos_trans_trans in H; [ | typeclasses eauto ]. assumption.
+    - apply t_step. right; assumption.
   Qed.
 
   Lemma sep_conj_guar_eq_commut' p q x y : guar (p ** q) x y -> guar (q ** p) x y.
@@ -1264,6 +1334,17 @@ Section Permissions.
   Lemma invperm_dup pred : eq_perm (invperm pred) (invperm pred ** invperm pred).
   Proof.
     apply dup_self_sep. apply self_sep_trivial_guar; intros; reflexivity.
+  Qed.
+
+  (* The conjunction of two relyperms is the relyperm of their conjunction *)
+  Lemma sep_conj_relyperm_conj rel1 rel2 `{PreOrder _ rel1} `{PreOrder _ rel2} :
+    eq_perm (relyperm rel1 ** relyperm rel2) (relyperm (fun x y => rel1 x y /\ rel2 x y)).
+  Proof.
+    constructor; constructor; simpl; intros; auto.
+    - rewrite clos_trans_eq_or in H2; [ | typeclasses eauto ].
+      rewrite clos_trans_trans in H2; [ | typeclasses eauto ]. assumption.
+    - repeat (split; [ apply I | ]). apply separate_relyperm_relyperm.
+    - apply t_step. left; assumption.
   Qed.
 
   (* add_pre_perm distributes over separating conjunction. Note that this only
